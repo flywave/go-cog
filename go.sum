@@ -1,6 +1,2 @@
 github.com/google/tiff v0.0.0-20161109161721-4b31f3041d9a h1:Mi5lnNcpqYN2M2J52gy1uknSRhfA9BBAPVBd5XfHi+U=
 github.com/google/tiff v0.0.0-20161109161721-4b31f3041d9a/go.mod h1:gpYY+jaYz1cbbiPKT9p2ReLdpBTvTRqoKwJ21LdEk+4=
-github.com/lanrat/extsort v1.0.0 h1:JjvkCUbD55+gs5s64FHmCU93kWjegEAM5n10XN6GB3c=
-github.com/lanrat/extsort v1.0.0/go.mod h1:bkDEvem4UnD1h87yKICydXs63mKrIGW3W9OGPMg93Ww=
-golang.org/x/sync v0.0.0-20210220032951-036812b2e83c h1:5KslGYwFpkhGh+Q16bwMP3cOontH8FOep7tGV86Y7SQ=
-golang.org/x/sync v0.0.0-20210220032951-036812b2e83c/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=

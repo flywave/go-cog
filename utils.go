@@ -459,6 +459,37 @@ func encode(w io.Writer, m image.Image, predictor bool) error {
 	return nil
 }
 
+func encodeUInt16(w io.Writer, bounds image.Rectangle, m []uint16, predictor bool) error {
+	return nil
+}
+
+func encodeUInt32(w io.Writer, bounds image.Rectangle, m []uint32, predictor bool) error {
+	return nil
+}
+
+func encodeUInt64(w io.Writer, bounds image.Rectangle, m []uint64, predictor bool) error {
+	return nil
+}
+func encodeInt16(w io.Writer, bounds image.Rectangle, m []int16, predictor bool) error {
+	return nil
+}
+
+func encodeInt32(w io.Writer, bounds image.Rectangle, m []int32, predictor bool) error {
+	return nil
+}
+
+func encodeInt64(w io.Writer, bounds image.Rectangle, m []int64, predictor bool) error {
+	return nil
+}
+
+func encodeFloat32(w io.Writer, bounds image.Rectangle, m []float32, predictor bool) error {
+	return nil
+}
+
+func encodeFloat64(w io.Writer, bounds image.Rectangle, m []float64, predictor bool) error {
+	return nil
+}
+
 func writePix(w io.Writer, pix []byte, nrows, length, stride int) error {
 	if length == stride {
 		_, err := w.Write(pix[:nrows*length])

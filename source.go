@@ -18,7 +18,7 @@ type TiffSource struct {
 }
 
 type TiledRawSource struct {
-	dataOrImage               interface{} // []float64 | image.Image
+	dataOrImage               interface{} // []uint16 |  []uint32 | []uint64 | []int16 |  []int32 | []int64 | []float32 | []float64 | image.Image
 	rect                      image.Rectangle
 	ctype                     CompressionType
 	predictor                 bool
@@ -27,6 +27,7 @@ type TiledRawSource struct {
 	bitsPerSample             []uint32
 	extraSamples              uint32
 	colorMap                  []uint32
+	sampleFormat              []uint16
 }
 
 func (p *TiledRawSource) Bounds() image.Rectangle {
@@ -57,6 +58,22 @@ func (s *TiledRawSource) Encode(w io.Writer, enc binary.ByteOrder) error {
 			imageLen = d.X * d.Y * 8
 		case *image.NRGBA64:
 			imageLen = d.X * d.Y * 8
+		case []uint16:
+			imageLen = d.X * d.Y * 2
+		case []uint32:
+			imageLen = d.X * d.Y * 4
+		case []uint64:
+			imageLen = d.X * d.Y * 8
+		case []int16:
+			imageLen = d.X * d.Y * 2
+		case []int32:
+			imageLen = d.X * d.Y * 4
+		case []int64:
+			imageLen = d.X * d.Y * 8
+		case []float32:
+			imageLen = d.X * d.Y * 4
+		case []float64:
+			imageLen = d.X * d.Y * 8
 		default:
 			imageLen = d.X * d.Y * 4
 		}
@@ -75,6 +92,7 @@ func (s *TiledRawSource) Encode(w io.Writer, enc binary.ByteOrder) error {
 	s.bitsPerSample = []uint32{8, 8, 8, 8}
 	s.extraSamples = uint32(0)
 	s.colorMap = []uint32{}
+	s.sampleFormat = []uint16{}
 
 	var err error
 	switch m := s.dataOrImage.(type) {
@@ -94,11 +112,13 @@ func (s *TiledRawSource) Encode(w io.Writer, enc binary.ByteOrder) error {
 		s.photometricInterpretation = PI_BlackIsZero
 		s.samplesPerPixel = 1
 		s.bitsPerSample = []uint32{8}
+		s.sampleFormat = []uint16{1}
 		err = encodeGray(dst, m.Pix, d.X, d.Y, m.Stride, predictor)
 	case *image.Gray16:
 		s.photometricInterpretation = PI_BlackIsZero
 		s.samplesPerPixel = 1
 		s.bitsPerSample = []uint32{16}
+		s.sampleFormat = []uint16{1}
 		err = encodeGray16(dst, m.Pix, d.X, d.Y, m.Stride, predictor)
 	case *image.NRGBA:
 		s.extraSamples = 2
@@ -114,6 +134,46 @@ func (s *TiledRawSource) Encode(w io.Writer, enc binary.ByteOrder) error {
 		s.extraSamples = 1
 		s.bitsPerSample = []uint32{16, 16, 16, 16}
 		err = encodeRGBA64(dst, m.Pix, d.X, d.Y, m.Stride, predictor)
+	case []uint16:
+		s.samplesPerPixel = 1
+		s.bitsPerSample = []uint32{16}
+		s.sampleFormat = []uint16{1}
+		err = encodeUInt16(dst, s.Bounds(), m, predictor)
+	case []uint32:
+		s.samplesPerPixel = 1
+		s.bitsPerSample = []uint32{32}
+		s.sampleFormat = []uint16{1}
+		err = encodeUInt32(dst, s.Bounds(), m, predictor)
+	case []uint64:
+		s.samplesPerPixel = 1
+		s.bitsPerSample = []uint32{64}
+		s.sampleFormat = []uint16{1}
+		err = encodeUInt64(dst, s.Bounds(), m, predictor)
+	case []int16:
+		s.samplesPerPixel = 1
+		s.bitsPerSample = []uint32{16}
+		s.sampleFormat = []uint16{2}
+		err = encodeInt16(dst, s.Bounds(), m, predictor)
+	case []int32:
+		s.samplesPerPixel = 1
+		s.bitsPerSample = []uint32{32}
+		s.sampleFormat = []uint16{2}
+		err = encodeInt32(dst, s.Bounds(), m, predictor)
+	case []int64:
+		s.samplesPerPixel = 1
+		s.bitsPerSample = []uint32{64}
+		s.sampleFormat = []uint16{2}
+		err = encodeInt64(dst, s.Bounds(), m, predictor)
+	case []float32:
+		s.samplesPerPixel = 1
+		s.bitsPerSample = []uint32{32}
+		s.sampleFormat = []uint16{3}
+		err = encodeFloat32(dst, s.Bounds(), m, predictor)
+	case []float64:
+		s.samplesPerPixel = 1
+		s.bitsPerSample = []uint32{64}
+		s.sampleFormat = []uint16{3}
+		err = encodeFloat64(dst, s.Bounds(), m, predictor)
 	default:
 		s.extraSamples = 1
 		err = encode(dst, m.(image.Image), predictor)

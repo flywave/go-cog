@@ -5,13 +5,14 @@ import (
 	"os"
 	"testing"
 
-	"github.com/flywave/go-geo"
 	vec2d "github.com/flywave/go3d/float64/vec2"
+
+	"github.com/flywave/go-geo"
 	"github.com/google/tiff"
 )
 
 func TestCases(t *testing.T) {
-	gtiff := Read("./14_13733_6366.tif")
+	gtiff := Read("./scan_512x512_rgb8_tiled.tif")
 
 	if gtiff == nil {
 		t.FailNow()
@@ -58,7 +59,7 @@ func TestTile(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		tie := layer.GetTile(tiles[i][0], tiles[i][1])
+		//tie := layer.GetTile(tiles[i][0], tiles[i][1])
 
 		ifd, err := loadIFD(tif.R(), tif.IFDs()[0])
 		if err != nil {
@@ -66,7 +67,6 @@ func TestTile(t *testing.T) {
 		}
 
 		ifd.r = tif.R()
-		tie.ifd = ifd
 	}
 
 	if layer.GetTile(13733, 6367) == nil {

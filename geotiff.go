@@ -6,11 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math"
 	"os"
 
-	"github.com/flywave/go-cog/lzw"
 	"github.com/google/tiff"
+	"github.com/hhrutter/lzw"
+	"golang.org/x/image/ccitt"
 )
 
 type GeoTIFF struct {
@@ -31,8 +33,12 @@ func Read(fileName string) *GeoTIFF {
 		panic(err)
 	}
 	tifds := tif.IFDs()
+
 	ifds := make([]*IFD, 0)
 	for i := range tifds {
+		if err := sanityCheckIFD(tifds[i]); err != nil {
+			return nil
+		}
 		ifd, err := loadIFD(tif.R(), tifds[i])
 		if err != nil {
 			panic(err)
@@ -45,6 +51,13 @@ func Read(fileName string) *GeoTIFF {
 		m.Data = append(m.Data, d)
 	}
 	return m
+}
+
+func ccittFillOrder(tiffFillOrder uint) ccitt.Order {
+	if tiffFillOrder == 2 {
+		return ccitt.LSB
+	}
+	return ccitt.MSB
 }
 
 func (m GeoTIFF) readData(index int) (data []float64, err error) {
@@ -92,7 +105,6 @@ func (m GeoTIFF) readData(index int) (data []float64, err error) {
 		if len(m.ifds[index].TileByteCounts) > 0 {
 			blockCounts = m.ifds[index].TileByteCounts
 		}
-
 	} else {
 		if len(m.ifds[index].TileByteCounts) > 0 {
 			blockHeight = int(m.ifds[index].TileByteCounts[0])
@@ -126,9 +138,18 @@ func (m GeoTIFF) readData(index int) (data []float64, err error) {
 			case CTNone:
 				buf = make([]byte, n)
 				_, err = m.ifds[index].r.ReadAt(buf, offset)
-
+			case CTG3:
+				inv := m.ifds[index].PhotometricInterpretation == PI_WhiteIsZero
+				order := ccittFillOrder(uint(m.ifds[index].FillOrder))
+				r := ccitt.NewReader(io.NewSectionReader(m.ifds[index].r, offset, n), order, ccitt.Group3, blkW, blkH, &ccitt.Options{Invert: inv, Align: false})
+				buf, err = ioutil.ReadAll(r)
+			case CTG4:
+				inv := m.ifds[index].PhotometricInterpretation == PI_WhiteIsZero
+				order := ccittFillOrder(uint(m.ifds[index].FillOrder))
+				r := ccitt.NewReader(io.NewSectionReader(m.ifds[index].r, offset, n), order, ccitt.Group4, blkW, blkH, &ccitt.Options{Invert: inv, Align: false})
+				buf, err = ioutil.ReadAll(r)
 			case CTLZW:
-				r := lzw.NewReader(io.NewSectionReader(m.ifds[index].r, offset, n), lzw.MSB, 8)
+				r := lzw.NewReader(io.NewSectionReader(m.ifds[index].r, offset, n), true)
 				defer r.Close()
 				buf, err = io.ReadAll(r)
 
@@ -146,7 +167,7 @@ func (m GeoTIFF) readData(index int) (data []float64, err error) {
 				}
 				r.Close()
 			case CTPackBits:
-
+				buf, err = unpackBits(io.NewSectionReader(m.ifds[index].r, offset, n))
 			default:
 				err = fmt.Errorf("unsupported compression value %d", compressionType)
 			}
@@ -689,8 +710,8 @@ func (g *GeoTIFF) writeIFD(w io.Writer, ifd *IFD, offset uint64, striledata *tag
 		return fmt.Errorf("write header: %w", err)
 	}
 
-	if ifd.SubfileType > 0 {
-		err := g.writeField(w, TagNewSubfileType, ifd.SubfileType)
+	if ifd.NewSubfileType > 0 {
+		err := g.writeField(w, TagNewSubfileType, ifd.NewSubfileType)
 		if err != nil {
 			panic(err)
 		}

@@ -1,6 +1,8 @@
 package cog
 
 import (
+	"fmt"
+	"image"
 	"io"
 
 	"github.com/google/tiff"
@@ -420,6 +422,43 @@ func encodeRGBA64(w io.Writer, pix []uint8, dx, dy, stride int, predictor bool) 
 	return nil
 }
 
+func encode(w io.Writer, m image.Image, predictor bool) error {
+	bounds := m.Bounds()
+	buf := make([]byte, 4*bounds.Dx())
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		off := 0
+		if predictor {
+			var r0, g0, b0, a0 uint8
+			for x := bounds.Min.X; x < bounds.Max.X; x++ {
+				r, g, b, a := m.At(x, y).RGBA()
+				r1 := uint8(r >> 8)
+				g1 := uint8(g >> 8)
+				b1 := uint8(b >> 8)
+				a1 := uint8(a >> 8)
+				buf[off+0] = r1 - r0
+				buf[off+1] = g1 - g0
+				buf[off+2] = b1 - b0
+				buf[off+3] = a1 - a0
+				off += 4
+				r0, g0, b0, a0 = r1, g1, b1, a1
+			}
+		} else {
+			for x := bounds.Min.X; x < bounds.Max.X; x++ {
+				r, g, b, a := m.At(x, y).RGBA()
+				buf[off+0] = uint8(r >> 8)
+				buf[off+1] = uint8(g >> 8)
+				buf[off+2] = uint8(b >> 8)
+				buf[off+3] = uint8(a >> 8)
+				off += 4
+			}
+		}
+		if _, err := w.Write(buf); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func writePix(w io.Writer, pix []byte, nrows, length, stride int) error {
 	if length == stride {
 		_, err := w.Write(pix[:nrows*length])
@@ -430,6 +469,45 @@ func writePix(w io.Writer, pix []byte, nrows, length, stride int) error {
 			return err
 		}
 		pix = pix[stride:]
+	}
+	return nil
+}
+
+func sanityCheck(tiffs []tiff.TIFF) error {
+	if len(tiffs) == 0 {
+		return fmt.Errorf("no tiffs")
+	}
+	order := tiffs[0].Order()
+	if order != "MM" && order != "II" {
+		return fmt.Errorf("unknown byte order")
+	}
+	for it, tif := range tiffs {
+		if tif.Order() != order {
+			return fmt.Errorf("inconsistent byte order")
+		}
+		for ii, ifd := range tif.IFDs() {
+			err := sanityCheckIFD(ifd)
+			if err != nil {
+				return fmt.Errorf("tif %d ifd %d: %w", it, ii, err)
+			}
+		}
+	}
+	return nil
+}
+
+func sanityCheckIFD(ifd tiff.IFD) error {
+	to := ifd.GetField(324)
+	tl := ifd.GetField(325)
+	if to == nil || tl == nil {
+		return fmt.Errorf("no tiles")
+	}
+	if to.Count() != tl.Count() {
+		return fmt.Errorf("inconsistent tile off/len count")
+	}
+	so := ifd.GetField(272)
+	sl := ifd.GetField(279)
+	if so != nil || sl != nil {
+		return fmt.Errorf("tif has strips")
 	}
 	return nil
 }

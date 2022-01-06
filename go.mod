@@ -9,4 +9,6 @@ require (
 	github.com/flywave/go-proj v0.0.0-20211220121303-46dc797a5cd0 // indirect
 	github.com/flywave/go3d v0.0.0-20211208020909-d2697502845a
 	github.com/google/tiff v0.0.0-20161109161721-4b31f3041d9a
+	github.com/hhrutter/lzw v0.0.0-20190829144645-6f07a24e8650 // indirect
+	golang.org/x/image v0.0.0-20211028202545-6944b10bf410 // indirect
 )

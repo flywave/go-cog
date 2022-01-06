@@ -11,8 +11,6 @@ import (
 type Tile struct {
 	block [2]int
 	Id    [3]int
-	ifd   *IFD
-	data  []float64
 }
 
 type TileLayer struct {

@@ -1,5 +1,11 @@
 package cog
 
+import (
+	"io"
+
+	"github.com/google/tiff"
+)
+
 func minInt(a, b int) int {
 	if a <= b {
 		return a
@@ -201,6 +207,24 @@ const (
 )
 
 const (
+	tByte      = 1
+	tAscii     = 2
+	tShort     = 3
+	tLong      = 4
+	tRational  = 5
+	tSByte     = 6
+	tUndefined = 7
+	tSShort    = 8
+	tSLong     = 9
+	tSRational = 10
+	tFloat     = 11
+	tDouble    = 12
+	tLong8     = 16
+	tSLong8    = 17
+	tIFD8      = 18
+)
+
+const (
 	PI_WhiteIsZero = 0
 	PI_BlackIsZero = 1
 	PI_RGB         = 2
@@ -243,4 +267,169 @@ func ToRGBA(data []float64) [][4]uint8 {
 		i += 4
 	}
 	return bytes
+}
+
+func loadMultipleTIFFs(tifs []tiff.TIFF) ([]*IFD, error) {
+	ifds := make([]*IFD, 0)
+	for _, tif := range tifs {
+		tifds := tif.IFDs()
+		for i := range tifds {
+			ifd, err := loadIFD(tif.R(), tifds[i])
+			if err != nil {
+				return nil, err
+			}
+			ifds = append(ifds, ifd)
+		}
+	}
+	return ifds, nil
+}
+
+func loadSingleTIFF(tif tiff.TIFF) ([]*IFD, error) {
+	tifds := tif.IFDs()
+	ifds := make([]*IFD, len(tifds))
+	var err error
+	for i := range tifds {
+		ifds[i], err = loadIFD(tif.R(), tifds[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return ifds, nil
+}
+
+func loadIFD(r tiff.BReader, tifd tiff.IFD) (*IFD, error) {
+	ifd := &IFD{r: r}
+	err := tiff.UnmarshalIFD(tifd, ifd)
+	if err != nil {
+		return nil, err
+	}
+	if len(ifd.TempTileByteCounts) > 0 {
+		ifd.TileByteCounts = make([]uint32, len(ifd.TempTileByteCounts))
+		for i := range ifd.TempTileByteCounts {
+			ifd.TileByteCounts[i] = uint32(ifd.TempTileByteCounts[i])
+		}
+		ifd.TempTileByteCounts = nil //reclaim mem
+	}
+	return ifd, nil
+}
+
+func encodeGray(w io.Writer, pix []uint8, dx, dy, stride int, predictor bool) error {
+	if !predictor {
+		return writePix(w, pix, dy, dx, stride)
+	}
+	buf := make([]byte, dx)
+	for y := 0; y < dy; y++ {
+		min := y*stride + 0
+		max := y*stride + dx
+		off := 0
+		var v0 uint8
+		for i := min; i < max; i++ {
+			v1 := pix[i]
+			buf[off] = v1 - v0
+			v0 = v1
+			off++
+		}
+		if _, err := w.Write(buf); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func encodeGray16(w io.Writer, pix []uint8, dx, dy, stride int, predictor bool) error {
+	buf := make([]byte, dx*2)
+	for y := 0; y < dy; y++ {
+		min := y*stride + 0
+		max := y*stride + dx*2
+		off := 0
+		var v0 uint16
+		for i := min; i < max; i += 2 {
+			v1 := uint16(pix[i])<<8 | uint16(pix[i+1])
+			if predictor {
+				v0, v1 = v1, v1-v0
+			}
+			buf[off+0] = byte(v1)
+			buf[off+1] = byte(v1 >> 8)
+			off += 2
+		}
+		if _, err := w.Write(buf); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func encodeRGBA(w io.Writer, pix []uint8, dx, dy, stride int, predictor bool) error {
+	if !predictor {
+		return writePix(w, pix, dy, dx*4, stride)
+	}
+	buf := make([]byte, dx*4)
+	for y := 0; y < dy; y++ {
+		min := y*stride + 0
+		max := y*stride + dx*4
+		off := 0
+		var r0, g0, b0, a0 uint8
+		for i := min; i < max; i += 4 {
+			r1, g1, b1, a1 := pix[i+0], pix[i+1], pix[i+2], pix[i+3]
+			buf[off+0] = r1 - r0
+			buf[off+1] = g1 - g0
+			buf[off+2] = b1 - b0
+			buf[off+3] = a1 - a0
+			off += 4
+			r0, g0, b0, a0 = r1, g1, b1, a1
+		}
+		if _, err := w.Write(buf); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func encodeRGBA64(w io.Writer, pix []uint8, dx, dy, stride int, predictor bool) error {
+	buf := make([]byte, dx*8)
+	for y := 0; y < dy; y++ {
+		min := y*stride + 0
+		max := y*stride + dx*8
+		off := 0
+		var r0, g0, b0, a0 uint16
+		for i := min; i < max; i += 8 {
+			r1 := uint16(pix[i+0])<<8 | uint16(pix[i+1])
+			g1 := uint16(pix[i+2])<<8 | uint16(pix[i+3])
+			b1 := uint16(pix[i+4])<<8 | uint16(pix[i+5])
+			a1 := uint16(pix[i+6])<<8 | uint16(pix[i+7])
+			if predictor {
+				r0, r1 = r1, r1-r0
+				g0, g1 = g1, g1-g0
+				b0, b1 = b1, b1-b0
+				a0, a1 = a1, a1-a0
+			}
+			buf[off+0] = byte(r1)
+			buf[off+1] = byte(r1 >> 8)
+			buf[off+2] = byte(g1)
+			buf[off+3] = byte(g1 >> 8)
+			buf[off+4] = byte(b1)
+			buf[off+5] = byte(b1 >> 8)
+			buf[off+6] = byte(a1)
+			buf[off+7] = byte(a1 >> 8)
+			off += 8
+		}
+		if _, err := w.Write(buf); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func writePix(w io.Writer, pix []byte, nrows, length, stride int) error {
+	if length == stride {
+		_, err := w.Write(pix[:nrows*length])
+		return err
+	}
+	for ; nrows > 0; nrows-- {
+		if _, err := w.Write(pix[:length]); err != nil {
+			return err
+		}
+		pix = pix[stride:]
+	}
+	return nil
 }

@@ -1,8 +1,6 @@
 package cog
 
 import (
-	"bytes"
-
 	"compress/zlib"
 	"encoding/binary"
 	"errors"
@@ -13,13 +11,13 @@ import (
 
 	"github.com/flywave/go-cog/lzw"
 	"github.com/google/tiff"
-	"github.com/google/tiff/bigtiff"
 )
 
 type GeoTIFF struct {
-	Cog
-	Tif  tiff.TIFF
-	Data []float64
+	Data    [][]float64
+	ifds    []*IFD
+	bigtiff bool
+	enc     binary.ByteOrder
 }
 
 func Read(fileName string) *GeoTIFF {
@@ -32,199 +30,49 @@ func Read(fileName string) *GeoTIFF {
 	if err != nil {
 		panic(err)
 	}
-	m := &GeoTIFF{Tif: tif}
-	m.Data, _ = m.readData()
+	tifds := tif.IFDs()
+	ifds := make([]*IFD, 0)
+	for i := range tifds {
+		ifd, err := loadIFD(tif.R(), tifds[i])
+		if err != nil {
+			panic(err)
+		}
+		ifds = append(ifds, ifd)
+	}
+	m := &GeoTIFF{ifds: ifds}
+	for i := range ifds {
+		d, _ := m.readData(i)
+		m.Data = append(m.Data, d)
+	}
 	return m
 }
 
-func (m GeoTIFF) HasField(tagID uint16) bool {
-	ifds := m.Tif.IFDs()
-	index := 0
-	for index >= 0 {
-		if ifds[index].HasField(tagID) {
-			return true
-		}
-		index--
+func (m GeoTIFF) readData(index int) (data []float64, err error) {
+	compressionType := m.ifds[index].Compression
+	SampleFormat := uint16(0)
+	if len(m.ifds[index].SampleFormat) > 0 {
+		SampleFormat = m.ifds[index].SampleFormat[0]
 	}
-	return false
-}
 
-func (m GeoTIFF) GetField(tagID uint16) tiff.Field {
-	ifds := m.Tif.IFDs()
-	index := 0
-	for index >= 0 {
-		if ifds[index].HasField(tagID) {
-			return ifds[index].GetField(tagID)
-		}
-		index--
-	}
-	return nil
-}
-
-func (m GeoTIFF) GetFirstInt(tagID uint16) uint {
-	field := m.GetField(tagID)
-	val := field.Value()
-	bs := val.Bytes()
-	size := field.Type().Size()
-	//
-	switch field.Type() {
-	case tiff.FTByte:
-		return uint(bs[0])
-	case tiff.FTShort:
-		return uint(val.Order().Uint16(bs[:size]))
-	case tiff.FTLong: //
-		return uint(val.Order().Uint32(bs[:size]))
-	}
-	return 0
-}
-
-func (m GeoTIFF) GetInt(tagID uint16) []uint {
-	field := m.GetField(tagID)
-	count := field.Count()
-	size := field.Type().Size()
-	u := make([]uint, count)
-	val := field.Value()
-	bs := val.Bytes()
-
-	switch field.Type() {
-	case tiff.FTByte:
-		for i := uint64(0); i < count; i++ {
-			u[i] = uint(bs[i])
-		}
-	case tiff.FTShort:
-		for i := uint64(0); i < count; i++ {
-			u[i] = uint(val.Order().Uint16(bs[size*i : size*(i+1)]))
-		}
-	case tiff.FTLong:
-		for i := uint64(0); i < count; i++ {
-			u[i] = uint(val.Order().Uint32(bs[size*i : size*(i+1)]))
-		}
-	case bigtiff.FTLong8:
-		for i := uint64(0); i < count; i++ {
-			u[i] = uint(val.Order().Uint32(bs[size*i : size*(i+1)]))
-		}
-	}
-	return u
-}
-
-func (m GeoTIFF) GetFloat(tagID uint16) []float64 {
-	field := m.GetField(tagID)
-	count := field.Count()
-	u := make([]float64, count)
-	val := field.Value()
-	bs := val.Bytes()
-	switch field.Type() {
-	case tiff.FTFloat:
-		u2 := make([]float32, count)
-		for i := uint64(0); i < count; i++ {
-			buf := bytes.NewReader(bs[4*i : 4*(i+1)])
-			binary.Read(buf, val.Order(), &u2[i])
-		}
-		for i := uint64(0); i < count; i++ {
-			u[i] = float64(u2[i])
-		}
-	case tiff.FTDouble:
-		for i := uint64(0); i < count; i++ {
-			buf := bytes.NewReader(bs[8*i : 8*(i+1)])
-			binary.Read(buf, val.Order(), &u[i])
-		}
-
-	}
-	return u
-}
-
-func (m GeoTIFF) Origin() []float64 {
-	origin := m.GetFloat(TagModelTiepointTag)
-	return origin[3:6]
-}
-
-func (m GeoTIFF) Scale() []float64 {
-	return m.GetFloat(TagModelPixelScaleTag)
-}
-
-func (m GeoTIFF) Transform() []float64 {
-	return m.GetFloat(TagModelTransformationTag)
-}
-
-func (m GeoTIFF) GetColRow(lon, lat float64) [2]int {
-	origin := m.Origin()
-	scale := m.Scale()
-	col := int(math.Round((lon - origin[0]) / scale[0]))
-	row := int(math.Round((origin[1] - lat) / scale[1]))
-	width, height := m.Width(), m.Height()
-	if row >= height {
-		row = height - 1
-	}
-	if col >= width {
-		col = width - 1
-	}
-	return [2]int{col, row}
-}
-
-func (m GeoTIFF) GetLonLat(col, row int) [2]float64 {
-	ModelTiepoint := m.GetFloat(TagModelTiepointTag)
-	scale := m.Scale()
-
-	lon := (float64(col)-ModelTiepoint[0])*scale[0] + ModelTiepoint[3]
-	lat := (float64(row)-ModelTiepoint[1])*scale[1]*(-1) + ModelTiepoint[4]
-
-	return [2]float64{lon, lat}
-}
-
-func (m GeoTIFF) BBox() [4]float64 {
-	origin := m.Origin()
-	scale := m.Scale()
-	var maxX = origin[0] + (scale[0] * float64(m.Width()))
-	var minY = origin[1] - (scale[1] * float64(m.Height()))
-	return [4]float64{
-		origin[0], origin[1], maxX, minY,
-	}
-}
-
-func (m GeoTIFF) Width() int {
-	return int(m.GetFirstInt(TagImageWidth))
-}
-
-func (m GeoTIFF) Height() int {
-	return int(m.GetFirstInt(TagImageLength))
-}
-
-func (m GeoTIFF) GetAlt(column, row int) float64 {
-	return m.Data[column+row*m.Width()]
-}
-
-func (m GeoTIFF) GetAltByLonLat(lon, lat float64) float64 {
-	colrow := m.GetColRow(lon, lat)
-	col, row := colrow[0], colrow[1]
-	fmt.Println(col, row)
-	return m.GetAlt(col, row)
-}
-
-func (m GeoTIFF) readData() (data []float64, err error) {
-	tif := m.Tif
-
-	compressionType := m.GetFirstInt(TagCompression)
-	SampleFormat := m.GetFirstInt(TagSampleFormat)
-
-	width := m.Width()
-	height := m.Height()
+	width := int(m.ifds[index].ImageWidth)
+	height := int(m.ifds[index].ImageLength)
 
 	//
 	data = make([]float64, width*height)
 
 	var off int
-	bitsPerSample := m.GetInt(TagBitsPerSample)
+	bitsPerSample := m.ifds[index].BitsPerSample
 	blockPadding := false
 	blockWidth := int(width)
 	blockHeight := int(height)
 	blocksAcross := 1
 	blocksDown := 1
 
-	var blockOffsets, blockCounts []uint
+	var blockOffsets, blockCounts []uint32
 
-	if m.HasField(TagTileWidth) {
-		tileWidth := int(m.GetFirstInt(TagTileWidth))
-		tileHeight := int(m.GetFirstInt(TagTileLength))
+	if m.ifds[index].TileWidth != 0 {
+		tileWidth := int(m.ifds[index].TileWidth)
+		tileHeight := int(m.ifds[index].TileLength)
 
 		blockPadding = true
 
@@ -234,27 +82,30 @@ func (m GeoTIFF) readData() (data []float64, err error) {
 		blocksAcross = (width + blockWidth - 1) / blockWidth
 		blocksDown = (height + blockHeight - 1) / blockHeight
 
-		if ok := m.HasField(TagTileOffsets); ok {
-			blockOffsets = m.GetInt(TagTileOffsets)
+		if len(m.ifds[index].OriginalTileOffsets) > 0 {
+			blockOffsets = make([]uint32, len(m.ifds[index].OriginalTileOffsets))
+			for i, off := range m.ifds[index].OriginalTileOffsets {
+				blockOffsets[i] = uint32(off)
+			}
 		}
 
-		if ok := m.HasField(TagTileByteCounts); ok {
-			blockCounts = m.GetInt(TagTileByteCounts)
+		if len(m.ifds[index].TileByteCounts) > 0 {
+			blockCounts = m.ifds[index].TileByteCounts
 		}
 
 	} else {
-		if m.HasField(TagRowsPerStrip) {
-			blockHeight = int(m.GetFirstInt(TagRowsPerStrip))
+		if len(m.ifds[index].TileByteCounts) > 0 {
+			blockHeight = int(m.ifds[index].TileByteCounts[0])
 		}
 
 		blocksDown = (height + blockHeight - 1) / blockHeight
 
-		if ok := m.HasField(TagStripOffsets); ok {
-			blockOffsets = m.GetInt(TagStripOffsets)
+		if len(m.ifds[index].StripOffsets) > 0 {
+			blockOffsets = m.ifds[index].StripOffsets
 		}
 
-		if ok := m.HasField(TagStripByteCounts); ok {
-			blockCounts = m.GetInt(TagStripByteCounts)
+		if len(m.ifds[index].StripByteCounts) > 0 {
+			blockCounts = m.ifds[index].StripByteCounts
 		}
 	}
 	var buf []byte
@@ -274,10 +125,10 @@ func (m GeoTIFF) readData() (data []float64, err error) {
 			switch compressionType {
 			case CTNone:
 				buf = make([]byte, n)
-				_, err = tif.R().ReadAt(buf, offset)
+				_, err = m.ifds[index].r.ReadAt(buf, offset)
 
 			case CTLZW:
-				r := lzw.NewReader(io.NewSectionReader(tif.R(), offset, n), lzw.MSB, 8)
+				r := lzw.NewReader(io.NewSectionReader(m.ifds[index].r, offset, n), lzw.MSB, 8)
 				defer r.Close()
 				buf, err = io.ReadAll(r)
 
@@ -285,7 +136,7 @@ func (m GeoTIFF) readData() (data []float64, err error) {
 					println(err)
 				}
 			case CTDeflate, CTDeflateOld:
-				r, err := zlib.NewReader(io.NewSectionReader(tif.R(), offset, n))
+				r, err := zlib.NewReader(io.NewSectionReader(m.ifds[index].r, offset, n))
 				if err != nil {
 					return nil, err
 				}
@@ -310,7 +161,7 @@ func (m GeoTIFF) readData() (data []float64, err error) {
 
 			off = 0
 
-			if m.HasField(TagPredictor) && m.GetFirstInt(TagPredictor) == PredictorHorizontal {
+			if m.ifds[index].Predictor == PredictorHorizontal {
 				if bitsPerSample[0] == 16 {
 					var off int
 					spp := len(bitsPerSample)
@@ -318,9 +169,9 @@ func (m GeoTIFF) readData() (data []float64, err error) {
 					for y := ymin; y < ymax; y++ {
 						off += spp * 2
 						for x := 0; x < (xmax-xmin-1)*bpp; x += 2 {
-							v0 := tif.R().ByteOrder().Uint16(buf[off-bpp : off-bpp+2])
-							v1 := tif.R().ByteOrder().Uint16(buf[off : off+2])
-							tif.R().ByteOrder().PutUint16(buf[off:off+2], v1+v0)
+							v0 := m.ifds[index].r.ByteOrder().Uint16(buf[off-bpp : off-bpp+2])
+							v1 := m.ifds[index].r.ByteOrder().Uint16(buf[off : off+2])
+							m.ifds[index].r.ByteOrder().PutUint16(buf[off:off+2], v1+v0)
 							off += 2
 						}
 					}
@@ -337,7 +188,7 @@ func (m GeoTIFF) readData() (data []float64, err error) {
 				}
 			}
 			var mode ImageMode
-			PhotometricInterp := m.GetFirstInt(TagPhotometricInterpretation)
+			PhotometricInterp := m.ifds[index].PhotometricInterpretation
 			var palette []uint32
 
 			switch PhotometricInterp {
@@ -362,7 +213,11 @@ func (m GeoTIFF) readData() (data []float64, err error) {
 				case 3:
 					mode = IRGB
 				case 4:
-					switch m.GetFirstInt(TagExtraSamples) {
+					es := uint16(0)
+					if len(m.ifds[index].ExtraSamples) > 0 {
+						es = m.ifds[index].ExtraSamples[0]
+					}
+					switch es {
 					case 1:
 						mode = IRGBA
 					case 2:
@@ -377,8 +232,8 @@ func (m GeoTIFF) readData() (data []float64, err error) {
 				}
 			case PI_Paletted:
 				mode = IPaletted
-				if ok := m.HasField(TagColorMap); ok {
-					val := m.GetInt(TagColorMap)
+				if len(m.ifds[index].Colormap) > 0 {
+					val := m.ifds[index].Colormap
 					numcolors := len(val) / 3
 					if len(val)%3 != 0 || numcolors <= 0 || numcolors > 256 {
 						return nil, errors.New("bad ColorMap length")
@@ -421,7 +276,7 @@ func (m GeoTIFF) readData() (data []float64, err error) {
 					case 16:
 						for y := ymin; y < ymax; y++ {
 							for x := xmin; x < xmax; x++ {
-								value := tif.R().ByteOrder().Uint16(buf[off : off+2])
+								value := m.ifds[index].r.ByteOrder().Uint16(buf[off : off+2])
 								i := y*width + x
 								data[i] = float64(value)
 								off += 2
@@ -430,7 +285,7 @@ func (m GeoTIFF) readData() (data []float64, err error) {
 					case 32:
 						for y := ymin; y < ymax; y++ {
 							for x := xmin; x < xmax; x++ {
-								value := tif.R().ByteOrder().Uint32(buf[off : off+4])
+								value := m.ifds[index].r.ByteOrder().Uint32(buf[off : off+4])
 								i := y*width + x
 								data[i] = float64(value)
 								off += 4
@@ -439,7 +294,7 @@ func (m GeoTIFF) readData() (data []float64, err error) {
 					case 64:
 						for y := ymin; y < ymax; y++ {
 							for x := xmin; x < xmax; x++ {
-								value := tif.R().ByteOrder().Uint64(buf[off : off+8])
+								value := m.ifds[index].r.ByteOrder().Uint64(buf[off : off+8])
 								i := y*width + x
 								data[i] = float64(value)
 								off += 8
@@ -462,7 +317,7 @@ func (m GeoTIFF) readData() (data []float64, err error) {
 					case 16:
 						for y := ymin; y < ymax; y++ {
 							for x := xmin; x < xmax; x++ {
-								value := int16(tif.R().ByteOrder().Uint16(buf[off : off+2]))
+								value := int16(m.ifds[index].r.ByteOrder().Uint16(buf[off : off+2]))
 								i := y*width + x
 								data[i] = float64(value)
 								off += 2
@@ -471,7 +326,7 @@ func (m GeoTIFF) readData() (data []float64, err error) {
 					case 32:
 						for y := ymin; y < ymax; y++ {
 							for x := xmin; x < xmax; x++ {
-								value := int32(tif.R().ByteOrder().Uint32(buf[off : off+4]))
+								value := int32(m.ifds[index].r.ByteOrder().Uint32(buf[off : off+4]))
 								i := y*width + x
 								data[i] = float64(value)
 								off += 4
@@ -480,7 +335,7 @@ func (m GeoTIFF) readData() (data []float64, err error) {
 					case 64:
 						for y := ymin; y < ymax; y++ {
 							for x := xmin; x < xmax; x++ {
-								value := int64(tif.R().ByteOrder().Uint64(buf[off : off+8]))
+								value := int64(m.ifds[index].r.ByteOrder().Uint64(buf[off : off+8]))
 								i := y*width + x
 								data[i] = float64(value)
 								off += 8
@@ -496,7 +351,7 @@ func (m GeoTIFF) readData() (data []float64, err error) {
 						for y := ymin; y < ymax; y++ {
 							for x := xmin; x < xmax; x++ {
 								if off <= len(buf) {
-									bits := tif.R().ByteOrder().Uint32(buf[off : off+4])
+									bits := m.ifds[index].r.ByteOrder().Uint32(buf[off : off+4])
 									float := math.Float32frombits(bits)
 									i := y*width + x
 									data[i] = float64(float)
@@ -508,7 +363,7 @@ func (m GeoTIFF) readData() (data []float64, err error) {
 						for y := ymin; y < ymax; y++ {
 							for x := xmin; x < xmax; x++ {
 								if off <= len(buf) {
-									bits := tif.R().ByteOrder().Uint64(buf[off : off+8])
+									bits := m.ifds[index].r.ByteOrder().Uint64(buf[off : off+8])
 									float := math.Float64frombits(bits)
 									i := y*width + x
 									data[i] = float
@@ -551,9 +406,9 @@ func (m GeoTIFF) readData() (data []float64, err error) {
 				} else if bitsPerSample[0] == 16 {
 					for y := ymin; y < ymax; y++ {
 						for x := xmin; x < xmax; x++ {
-							red := uint32(float64(tif.R().ByteOrder().Uint16(buf[off+0:off+2])) / 65535.0 * 255.0)
-							green := uint32(float64(tif.R().ByteOrder().Uint16(buf[off+2:off+4])) / 65535.0 * 255.0)
-							blue := uint32(float64(tif.R().ByteOrder().Uint16(buf[off+4:off+6])) / 65535.0 * 255.0)
+							red := uint32(float64(m.ifds[index].r.ByteOrder().Uint16(buf[off+0:off+2])) / 65535.0 * 255.0)
+							green := uint32(float64(m.ifds[index].r.ByteOrder().Uint16(buf[off+2:off+4])) / 65535.0 * 255.0)
+							blue := uint32(float64(m.ifds[index].r.ByteOrder().Uint16(buf[off+4:off+6])) / 65535.0 * 255.0)
 							a := uint32(255)
 							off += 6
 							i := y*width + x
@@ -582,10 +437,10 @@ func (m GeoTIFF) readData() (data []float64, err error) {
 				} else if bitsPerSample[0] == 16 {
 					for y := ymin; y < ymax; y++ {
 						for x := xmin; x < xmax; x++ {
-							red := uint32(float64(tif.R().ByteOrder().Uint16(buf[off+0:off+2])) / 65535.0 * 255.0)
-							green := uint32(float64(tif.R().ByteOrder().Uint16(buf[off+2:off+4])) / 65535.0 * 255.0)
-							blue := uint32(float64(tif.R().ByteOrder().Uint16(buf[off+4:off+6])) / 65535.0 * 255.0)
-							a := uint32(float64(tif.R().ByteOrder().Uint16(buf[off+6:off+8])) / 65535.0 * 255.0)
+							red := uint32(float64(m.ifds[index].r.ByteOrder().Uint16(buf[off+0:off+2])) / 65535.0 * 255.0)
+							green := uint32(float64(m.ifds[index].r.ByteOrder().Uint16(buf[off+2:off+4])) / 65535.0 * 255.0)
+							blue := uint32(float64(m.ifds[index].r.ByteOrder().Uint16(buf[off+4:off+6])) / 65535.0 * 255.0)
+							a := uint32(float64(m.ifds[index].r.ByteOrder().Uint16(buf[off+6:off+8])) / 65535.0 * 255.0)
 							off += 8
 							i := y*width + x
 							val := uint32((a << 24) | (red << 16) | (green << 8) | blue)
@@ -600,10 +455,10 @@ func (m GeoTIFF) readData() (data []float64, err error) {
 				if bitsPerSample[0] == 16 {
 					for y := ymin; y < ymax; y++ {
 						for x := xmin; x < xmax; x++ {
-							red := uint32(float64(tif.R().ByteOrder().Uint16(buf[off+0:off+2])) / 65535.0 * 255.0)
-							green := uint32(float64(tif.R().ByteOrder().Uint16(buf[off+2:off+4])) / 65535.0 * 255.0)
-							blue := uint32(float64(tif.R().ByteOrder().Uint16(buf[off+4:off+6])) / 65535.0 * 255.0)
-							a := uint32(float64(tif.R().ByteOrder().Uint16(buf[off+6:off+8])) / 65535.0 * 255.0)
+							red := uint32(float64(m.ifds[index].r.ByteOrder().Uint16(buf[off+0:off+2])) / 65535.0 * 255.0)
+							green := uint32(float64(m.ifds[index].r.ByteOrder().Uint16(buf[off+2:off+4])) / 65535.0 * 255.0)
+							blue := uint32(float64(m.ifds[index].r.ByteOrder().Uint16(buf[off+4:off+6])) / 65535.0 * 255.0)
+							a := uint32(float64(m.ifds[index].r.ByteOrder().Uint16(buf[off+6:off+8])) / 65535.0 * 255.0)
 							off += 8
 							i := y*width + x
 							val := uint32((a << 24) | (red << 16) | (green << 8) | blue)
@@ -632,5 +487,453 @@ func (m GeoTIFF) readData() (data []float64, err error) {
 }
 
 func (g *GeoTIFF) writeData(out io.Writer) error {
+	err := g.computeImageryOffsets()
+	if err != nil {
+		return err
+	}
+
+	strileData := &tagData{Offset: 16}
+	if !g.bigtiff {
+		strileData.Offset = 8
+	}
+
+	strileData.Offset += uint64(len(ghost))
+
+	for _, ifd := range g.ifds {
+		strileData.Offset += ifd.tagsSize
+	}
+
+	glen := uint64(len(ghost))
+	g.writeHeader(out)
+
+	off := uint64(16 + glen)
+	if !g.bigtiff {
+		off = 8 + glen
+	}
+	for i, ifd := range g.ifds {
+		next := i < len(g.ifds)
+		err := g.writeIFD(out, ifd, off, strileData, next)
+		if err != nil {
+			return fmt.Errorf("write ifd: %w", err)
+		}
+		off += ifd.tagsSize
+	}
+
+	_, err = out.Write(strileData.Bytes())
+	if err != nil {
+		return fmt.Errorf("write strile pointers: %w", err)
+	}
+
+	datas := g.ifds
+	tiles := getTiles(datas)
+	data := []byte{}
+	for tile := range tiles {
+		idx := (tile.x+tile.y*tile.ifd.ntilesx)*tile.ifd.nplanes + tile.plane
+		bc := tile.ifd.TileByteCounts[idx]
+		if tile.ifd.r != nil {
+			if bc > 0 {
+				_, err := tile.ifd.r.Seek(int64(tile.ifd.OriginalTileOffsets[idx]), io.SeekStart)
+				if err != nil {
+					return fmt.Errorf("seek to %d: %w", tile.ifd.OriginalTileOffsets[idx], err)
+				}
+				if uint32(len(data)) < bc+8 {
+					data = make([]byte, (bc+8)*2)
+				}
+				binary.LittleEndian.PutUint32(data, bc)
+				_, err = tile.ifd.r.Read(data[4 : 4+bc])
+				if err != nil {
+					return fmt.Errorf("read %d from %d: %w",
+						bc, tile.ifd.OriginalTileOffsets[idx], err)
+				}
+				copy(data[4+bc:8+bc], data[bc:4+bc])
+				_, err = out.Write(data[0 : bc+8])
+				if err != nil {
+					return fmt.Errorf("write %d: %w", bc, err)
+				}
+			}
+		} else {
+
+		}
+	}
+
+	return err
+}
+
+func (g *GeoTIFF) computeStructure() {
+	for _, ifd := range g.ifds {
+		ifd.ntags, ifd.tagsSize, ifd.strileSize, ifd.nplanes = ifd.structure(g.bigtiff)
+		ifd.ntilesx = (ifd.ImageWidth + uint64(ifd.TileWidth) - 1) / uint64(ifd.TileWidth)
+		ifd.ntilesy = (ifd.ImageLength + uint64(ifd.TileLength) - 1) / uint64(ifd.TileLength)
+	}
+}
+
+const ghost = `GDAL_STRUCTURAL_METADATA_SIZE=000140 bytes
+LAYOUT=IFDS_BEFORE_DATA
+BLOCK_ORDER=ROW_MAJOR
+BLOCK_LEADER=SIZE_AS_UINT4
+BLOCK_TRAILER=LAST_4_BYTES_REPEATED
+KNOWN_INCOMPATIBLE_EDITION=NO
+  `
+
+func (g *GeoTIFF) computeImageryOffsets() error {
+	for _, ifd := range g.ifds {
+		if g.bigtiff {
+			ifd.NewTileOffsets64 = make([]uint64, len(ifd.OriginalTileOffsets))
+			ifd.NewTileOffsets32 = nil
+		} else {
+			ifd.NewTileOffsets32 = make([]uint32, len(ifd.OriginalTileOffsets))
+			ifd.NewTileOffsets64 = nil
+		}
+	}
+	g.computeStructure()
+
+	dataOffset := uint64(16)
+	if !g.bigtiff {
+		dataOffset = 8
+	}
+
+	dataOffset += uint64(len(ghost)) + 4
+
+	for _, ifd := range g.ifds {
+		dataOffset += ifd.strileSize + ifd.tagsSize
+	}
+
+	datas := g.ifds
+	tiles := getTiles(datas)
+	for tile := range tiles {
+		tileidx := (tile.x+tile.y*tile.ifd.ntilesx)*tile.ifd.nplanes + tile.plane
+		cnt := uint64(tile.ifd.TileByteCounts[tileidx])
+		if cnt > 0 {
+			if g.bigtiff {
+				tile.ifd.NewTileOffsets64[tileidx] = dataOffset
+			} else {
+				if dataOffset > uint64(^uint32(0)) { //^uint32(0) is max uint32
+					//rerun with bigtiff support
+
+					//first empty out the tiles channel to avoid a goroutine leak
+					for range tiles {
+						//skip
+					}
+					g.bigtiff = true
+					return g.computeImageryOffsets()
+				}
+				tile.ifd.NewTileOffsets32[tileidx] = uint32(dataOffset)
+			}
+			dataOffset += uint64(tile.ifd.TileByteCounts[tileidx]) + 8
+		} else {
+			if g.bigtiff {
+				tile.ifd.NewTileOffsets64[tileidx] = 0
+			} else {
+				tile.ifd.NewTileOffsets32[tileidx] = 0
+			}
+		}
+	}
+
 	return nil
+}
+
+func (g *GeoTIFF) writeHeader(w io.Writer) error {
+	glen := uint64(len(ghost))
+	var err error
+	if g.bigtiff {
+		buf := [16]byte{}
+		if g.enc == binary.LittleEndian {
+			copy(buf[0:], []byte("II"))
+		} else {
+			copy(buf[0:], []byte("MM"))
+		}
+		g.enc.PutUint16(buf[2:], 43)
+		g.enc.PutUint16(buf[4:], 8)
+		g.enc.PutUint16(buf[6:], 0)
+		g.enc.PutUint64(buf[8:], 16+glen)
+		_, err = w.Write(buf[:])
+	} else {
+		buf := [8]byte{}
+		if g.enc == binary.LittleEndian {
+			copy(buf[0:], []byte("II"))
+		} else {
+			copy(buf[0:], []byte("MM"))
+		}
+		g.enc.PutUint16(buf[2:], 42)
+		g.enc.PutUint32(buf[4:], 8+uint32(glen))
+		_, err = w.Write(buf[:])
+	}
+	if err != nil {
+		return err
+	}
+
+	_, err = w.Write([]byte(ghost))
+	return err
+}
+
+func (g *GeoTIFF) writeIFD(w io.Writer, ifd *IFD, offset uint64, striledata *tagData, next bool) error {
+	nextOff := uint64(0)
+	if next {
+		nextOff = offset + ifd.tagsSize
+	}
+	var err error
+
+	overflow := &tagData{
+		Offset: offset + 8 + 20*ifd.ntags + 8,
+	}
+	if !g.bigtiff {
+		overflow.Offset = offset + 2 + 12*ifd.ntags + 4
+	}
+
+	if g.bigtiff {
+		err = binary.Write(w, g.enc, ifd.ntags)
+	} else {
+		err = binary.Write(w, g.enc, uint16(ifd.ntags))
+	}
+	if err != nil {
+		return fmt.Errorf("write header: %w", err)
+	}
+
+	if ifd.SubfileType > 0 {
+		err := g.writeField(w, TagNewSubfileType, ifd.SubfileType)
+		if err != nil {
+			panic(err)
+		}
+	}
+	if ifd.ImageWidth > 0 {
+		err := g.writeField(w, TagImageWidth, uint32(ifd.ImageWidth))
+		if err != nil {
+			panic(err)
+		}
+	}
+	if ifd.ImageLength > 0 {
+		err := g.writeField(w, TagImageLength, uint32(ifd.ImageLength))
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	if len(ifd.BitsPerSample) > 0 {
+		err := g.writeArray(w, TagBitsPerSample, ifd.BitsPerSample, overflow)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	if ifd.Compression > 0 {
+		err := g.writeField(w, TagCompression, ifd.Compression)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	err = g.writeField(w, TagPhotometricInterpretation, ifd.PhotometricInterpretation)
+	if err != nil {
+		panic(err)
+	}
+
+	if len(ifd.DocumentName) > 0 {
+		err := g.writeArray(w, TagDocumentName, ifd.DocumentName, overflow)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	if ifd.SamplesPerPixel > 0 {
+		err := g.writeField(w, TagSamplesPerPixel, ifd.SamplesPerPixel)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	if ifd.PlanarConfiguration > 0 {
+		err := g.writeField(w, TagPlanarConfiguration, ifd.PlanarConfiguration)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	if len(ifd.DateTime) > 0 {
+		err := g.writeArray(w, TagDateTime, ifd.DateTime, overflow)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	if ifd.Predictor > 0 {
+		err := g.writeField(w, TagPredictor, ifd.Predictor)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	if len(ifd.Colormap) > 0 {
+		err := g.writeArray(w, TagColorMap, ifd.Colormap, overflow)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	if ifd.TileWidth > 0 {
+		err := g.writeField(w, TagTileWidth, ifd.TileWidth)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	if ifd.TileLength > 0 {
+		err := g.writeField(w, TagTileLength, ifd.TileLength)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	if len(ifd.NewTileOffsets32) > 0 {
+		err := g.writeArray(w, TagTileOffsets, ifd.NewTileOffsets32, striledata)
+		if err != nil {
+			panic(err)
+		}
+	} else {
+		err := g.writeArray(w, TagTileOffsets, ifd.NewTileOffsets64, striledata)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	if len(ifd.TileByteCounts) > 0 {
+		err := g.writeArray(w, TagTileByteCounts, ifd.TileByteCounts, striledata)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	if len(ifd.ExtraSamples) > 0 {
+		err := g.writeArray(w, TagExtraSamples, ifd.ExtraSamples, overflow)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	if len(ifd.SampleFormat) > 0 {
+		err := g.writeArray(w, TagSampleFormat, ifd.SampleFormat, overflow)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	if len(ifd.JPEGTables) > 0 {
+		err := g.writeArray(w, TagJPEGTables, ifd.JPEGTables, overflow)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	if len(ifd.ModelPixelScaleTag) > 0 {
+		err := g.writeArray(w, TagModelPixelScaleTag, ifd.ModelPixelScaleTag, overflow)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	if len(ifd.ModelTiePointTag) > 0 {
+		err := g.writeArray(w, TagModelTiepointTag, ifd.ModelTiePointTag, overflow)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	if len(ifd.ModelTransformationTag) > 0 {
+		err := g.writeArray(w, TagModelTransformationTag, ifd.ModelTransformationTag, overflow)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	if len(ifd.GeoKeyDirectoryTag) > 0 {
+		err := g.writeArray(w, TagGeoKeyDirectoryTag, ifd.GeoKeyDirectoryTag, overflow)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	if len(ifd.GeoDoubleParamsTag) > 0 {
+		err := g.writeArray(w, TagGeoDoubleParamsTag, ifd.GeoDoubleParamsTag, overflow)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	if len(ifd.GeoAsciiParamsTag) > 0 {
+		err := g.writeArray(w, TagGeoAsciiParamsTag, ifd.GeoAsciiParamsTag, overflow)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	if ifd.GDALMetaData != "" {
+		err := g.writeArray(w, TagGDAL_METADATA, ifd.GDALMetaData, overflow)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	if len(ifd.NoData) > 0 {
+		err := g.writeArray(w, TagGDAL_NODATA, ifd.NoData, overflow)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	if len(ifd.LERCParams) > 0 {
+		err := g.writeArray(w, TagLERCParams, ifd.LERCParams, overflow)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	if len(ifd.RPCs) > 0 {
+		err := g.writeArray(w, TagRPCs, ifd.RPCs, overflow)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	if g.bigtiff {
+		err = binary.Write(w, g.enc, nextOff)
+	} else {
+		err = binary.Write(w, g.enc, uint32(nextOff))
+	}
+	if err != nil {
+		return fmt.Errorf("write next: %w", err)
+	}
+	_, err = w.Write(overflow.Bytes())
+	if err != nil {
+		return fmt.Errorf("write parea: %w", err)
+	}
+	return nil
+}
+
+type TiledTiff struct {
+	ifd   *IFD
+	x, y  uint64
+	plane uint64
+}
+
+func getTiles(d []*IFD) chan TiledTiff {
+	ch := make(chan TiledTiff)
+	go func() {
+		defer close(ch)
+
+		for _, ovr := range d {
+			for y := uint64(0); y < ovr.ntilesy; y++ {
+				for x := uint64(0); x < ovr.ntilesx; x++ {
+					for p := uint64(0); p < ovr.nplanes; p++ {
+						ch <- TiledTiff{
+							ifd:   ovr,
+							plane: p,
+							x:     x,
+							y:     y,
+						}
+					}
+				}
+			}
+		}
+
+	}()
+	return ch
 }

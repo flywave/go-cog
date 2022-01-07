@@ -86,7 +86,13 @@ func NewTileLayer(box vec2d.Rect, level int, grid geo.TileGrid) *TileLayer {
 		tiles[i].block = [2]int{int(i % si[0]), int(i / si[0])}
 	}
 
-	return &TileLayer{row: si[1], col: si[0], level: level, box: rect, grid: grid, tilemap: tilemap, tiles: tiles}
+	p, err := ioutil.TempFile(os.TempDir(), "tile-")
+
+	if err != nil {
+		return nil
+	}
+
+	return &TileLayer{row: si[1], col: si[0], level: level, box: rect, grid: grid, tilemap: tilemap, tiles: tiles, tempFile: p}
 }
 
 func (l *TileLayer) GetTile(t [3]int) *Tile {
@@ -160,12 +166,6 @@ func (l *TileLayer) Close() error {
 }
 
 func (l *TileLayer) encode(enc binary.ByteOrder, clearOnSave bool) error {
-	p, err := ioutil.TempFile(os.TempDir(), "tile-")
-
-	if err != nil {
-		return err
-	}
-
 	offset := uint64(0)
 
 	for i := range l.tiles {
@@ -175,13 +175,13 @@ func (l *TileLayer) encode(enc binary.ByteOrder, clearOnSave bool) error {
 				OriginalTileOffsets: make([]uint64, len(l.tiles)),
 				TileByteCounts:      make([]uint32, len(l.tiles)),
 			}
-			n, _, err := l.tiles[i].Src.Encode(p, l.ifd)
+			n, _, err := l.tiles[i].Src.Encode(l.tempFile, l.ifd)
 			if err != nil {
 				return err
 			}
 			imageLen = n
 		} else {
-			n, _, err := l.tiles[i].Src.Encode(p, nil)
+			n, _, err := l.tiles[i].Src.Encode(l.tempFile, nil)
 			if err != nil {
 				return err
 			}
@@ -193,9 +193,7 @@ func (l *TileLayer) encode(enc binary.ByteOrder, clearOnSave bool) error {
 		offset += uint64(imageLen + 8)
 	}
 
-	p.Sync()
-
-	l.tempFile = p
+	l.tempFile.Sync()
 
 	l.setupIFD()
 
@@ -206,4 +204,21 @@ func (l *TileLayer) encode(enc binary.ByteOrder, clearOnSave bool) error {
 	}
 
 	return nil
+}
+
+type layerSorted []*TileLayer
+
+func (a layerSorted) Len() int      { return len(a) }
+func (a layerSorted) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a layerSorted) Less(i, j int) bool {
+	return a[i].level > a[j].level
+}
+
+func BuildTileLayers(box vec2d.Rect, levels []int, grid geo.TileGrid) []*TileLayer {
+	layers := make([]*TileLayer, len(levels))
+	for i, level := range levels {
+		layers[i] = NewTileLayer(box, level, grid)
+	}
+	sort.Sort(layerSorted(layers))
+	return layers
 }

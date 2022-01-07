@@ -12,16 +12,7 @@ type CogWriter struct {
 	tiles []*TileLayer
 }
 
-type layerSorted []*TileLayer
-
-func (a layerSorted) Len() int      { return len(a) }
-func (a layerSorted) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
-func (a layerSorted) Less(i, j int) bool {
-	return a[i].level > a[j].level
-}
-
 func Write(fileName string, tiles []*TileLayer, bigtiff bool) error {
-	sort.Sort(layerSorted(tiles))
 	w := &CogWriter{tiles: tiles, Writer: Writer{bigtiff: bigtiff, enc: tiffByteOrder}}
 
 	defer w.Close()
@@ -47,6 +38,8 @@ func (g *CogWriter) Close() error {
 }
 
 func (g *CogWriter) writeData(out io.Writer) error {
+	sort.Sort(layerSorted(g.tiles))
+
 	err := g.computeImageryOffsets()
 	if err != nil {
 		return err
@@ -184,19 +177,19 @@ func (g *CogWriter) computeImageryOffsets() error {
 	return nil
 }
 
-type TiledTiff struct {
+type tiledTiff struct {
 	tile  *Tile
 	x, y  uint64
 	layer *TileLayer
 }
 
-func getTiles(d []*TileLayer) chan TiledTiff {
-	ch := make(chan TiledTiff)
+func getTiles(d []*TileLayer) chan tiledTiff {
+	ch := make(chan tiledTiff)
 	go func() {
 		defer close(ch)
 		for _, l := range d {
 			for _, tile := range l.tiles {
-				ch <- TiledTiff{
+				ch <- tiledTiff{
 					tile:  tile,
 					x:     uint64(tile.block[0]),
 					y:     uint64(tile.block[1]),

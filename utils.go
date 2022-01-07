@@ -1,6 +1,7 @@
 package cog
 
 import (
+	"encoding/binary"
 	"fmt"
 	"image"
 	"io"
@@ -315,41 +316,18 @@ func loadIFD(r tiff.BReader, tifd tiff.IFD) (*IFD, error) {
 	return ifd, nil
 }
 
-func encodeGray(w io.Writer, pix []uint8, dx, dy, stride int, predictor bool) error {
-	if !predictor {
-		return writePix(w, pix, dy, dx, stride)
-	}
-	buf := make([]byte, dx)
-	for y := 0; y < dy; y++ {
-		min := y*stride + 0
-		max := y*stride + dx
-		off := 0
-		var v0 uint8
-		for i := min; i < max; i++ {
-			v1 := pix[i]
-			buf[off] = v1 - v0
-			v0 = v1
-			off++
-		}
-		if _, err := w.Write(buf); err != nil {
-			return err
-		}
-	}
-	return nil
+func encodeGray(w io.Writer, pix []uint8, dx, dy, stride int) error {
+	return writePix(w, pix, dy, dx, stride)
 }
 
-func encodeGray16(w io.Writer, pix []uint8, dx, dy, stride int, predictor bool) error {
+func encodeGray16(w io.Writer, pix []uint8, dx, dy, stride int) error {
 	buf := make([]byte, dx*2)
 	for y := 0; y < dy; y++ {
 		min := y*stride + 0
 		max := y*stride + dx*2
 		off := 0
-		var v0 uint16
 		for i := min; i < max; i += 2 {
 			v1 := uint16(pix[i])<<8 | uint16(pix[i+1])
-			if predictor {
-				v0, v1 = v1, v1-v0
-			}
 			buf[off+0] = byte(v1)
 			buf[off+1] = byte(v1 >> 8)
 			off += 2
@@ -361,50 +339,21 @@ func encodeGray16(w io.Writer, pix []uint8, dx, dy, stride int, predictor bool) 
 	return nil
 }
 
-func encodeRGBA(w io.Writer, pix []uint8, dx, dy, stride int, predictor bool) error {
-	if !predictor {
-		return writePix(w, pix, dy, dx*4, stride)
-	}
-	buf := make([]byte, dx*4)
-	for y := 0; y < dy; y++ {
-		min := y*stride + 0
-		max := y*stride + dx*4
-		off := 0
-		var r0, g0, b0, a0 uint8
-		for i := min; i < max; i += 4 {
-			r1, g1, b1, a1 := pix[i+0], pix[i+1], pix[i+2], pix[i+3]
-			buf[off+0] = r1 - r0
-			buf[off+1] = g1 - g0
-			buf[off+2] = b1 - b0
-			buf[off+3] = a1 - a0
-			off += 4
-			r0, g0, b0, a0 = r1, g1, b1, a1
-		}
-		if _, err := w.Write(buf); err != nil {
-			return err
-		}
-	}
-	return nil
+func encodeRGBA(w io.Writer, pix []uint8, dx, dy, stride int) error {
+	return writePix(w, pix, dy, dx*4, stride)
 }
 
-func encodeRGBA64(w io.Writer, pix []uint8, dx, dy, stride int, predictor bool) error {
+func encodeRGBA64(w io.Writer, pix []uint8, dx, dy, stride int) error {
 	buf := make([]byte, dx*8)
 	for y := 0; y < dy; y++ {
 		min := y*stride + 0
 		max := y*stride + dx*8
 		off := 0
-		var r0, g0, b0, a0 uint16
 		for i := min; i < max; i += 8 {
 			r1 := uint16(pix[i+0])<<8 | uint16(pix[i+1])
 			g1 := uint16(pix[i+2])<<8 | uint16(pix[i+3])
 			b1 := uint16(pix[i+4])<<8 | uint16(pix[i+5])
 			a1 := uint16(pix[i+6])<<8 | uint16(pix[i+7])
-			if predictor {
-				r0, r1 = r1, r1-r0
-				g0, g1 = g1, g1-g0
-				b0, b1 = b1, b1-b0
-				a0, a1 = a1, a1-a0
-			}
 			buf[off+0] = byte(r1)
 			buf[off+1] = byte(r1 >> 8)
 			buf[off+2] = byte(g1)
@@ -422,35 +371,18 @@ func encodeRGBA64(w io.Writer, pix []uint8, dx, dy, stride int, predictor bool) 
 	return nil
 }
 
-func encode(w io.Writer, m image.Image, predictor bool) error {
+func encode(w io.Writer, m image.Image) error {
 	bounds := m.Bounds()
 	buf := make([]byte, 4*bounds.Dx())
 	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
 		off := 0
-		if predictor {
-			var r0, g0, b0, a0 uint8
-			for x := bounds.Min.X; x < bounds.Max.X; x++ {
-				r, g, b, a := m.At(x, y).RGBA()
-				r1 := uint8(r >> 8)
-				g1 := uint8(g >> 8)
-				b1 := uint8(b >> 8)
-				a1 := uint8(a >> 8)
-				buf[off+0] = r1 - r0
-				buf[off+1] = g1 - g0
-				buf[off+2] = b1 - b0
-				buf[off+3] = a1 - a0
-				off += 4
-				r0, g0, b0, a0 = r1, g1, b1, a1
-			}
-		} else {
-			for x := bounds.Min.X; x < bounds.Max.X; x++ {
-				r, g, b, a := m.At(x, y).RGBA()
-				buf[off+0] = uint8(r >> 8)
-				buf[off+1] = uint8(g >> 8)
-				buf[off+2] = uint8(b >> 8)
-				buf[off+3] = uint8(a >> 8)
-				off += 4
-			}
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			r, g, b, a := m.At(x, y).RGBA()
+			buf[off+0] = uint8(r >> 8)
+			buf[off+1] = uint8(g >> 8)
+			buf[off+2] = uint8(b >> 8)
+			buf[off+3] = uint8(a >> 8)
+			off += 4
 		}
 		if _, err := w.Write(buf); err != nil {
 			return err
@@ -459,35 +391,36 @@ func encode(w io.Writer, m image.Image, predictor bool) error {
 	return nil
 }
 
-func encodeUInt16(w io.Writer, bounds image.Rectangle, m []uint16, predictor bool) error {
-	return nil
+func encodeUInt16(w io.Writer, bounds image.Rectangle, enc binary.ByteOrder, m []uint16) error {
+	return binary.Write(w, enc, m)
 }
 
-func encodeUInt32(w io.Writer, bounds image.Rectangle, m []uint32, predictor bool) error {
-	return nil
+func encodeUInt32(w io.Writer, bounds image.Rectangle, enc binary.ByteOrder, m []uint32) error {
+	return binary.Write(w, enc, m)
 }
 
-func encodeUInt64(w io.Writer, bounds image.Rectangle, m []uint64, predictor bool) error {
-	return nil
-}
-func encodeInt16(w io.Writer, bounds image.Rectangle, m []int16, predictor bool) error {
-	return nil
+func encodeUInt64(w io.Writer, bounds image.Rectangle, enc binary.ByteOrder, m []uint64) error {
+	return binary.Write(w, enc, m)
 }
 
-func encodeInt32(w io.Writer, bounds image.Rectangle, m []int32, predictor bool) error {
-	return nil
+func encodeInt16(w io.Writer, bounds image.Rectangle, enc binary.ByteOrder, m []int16) error {
+	return binary.Write(w, enc, m)
 }
 
-func encodeInt64(w io.Writer, bounds image.Rectangle, m []int64, predictor bool) error {
-	return nil
+func encodeInt32(w io.Writer, bounds image.Rectangle, enc binary.ByteOrder, m []int32) error {
+	return binary.Write(w, enc, m)
 }
 
-func encodeFloat32(w io.Writer, bounds image.Rectangle, m []float32, predictor bool) error {
-	return nil
+func encodeInt64(w io.Writer, bounds image.Rectangle, enc binary.ByteOrder, m []int64) error {
+	return binary.Write(w, enc, m)
 }
 
-func encodeFloat64(w io.Writer, bounds image.Rectangle, m []float64, predictor bool) error {
-	return nil
+func encodeFloat32(w io.Writer, bounds image.Rectangle, enc binary.ByteOrder, m []float32) error {
+	return binary.Write(w, enc, m)
+}
+
+func encodeFloat64(w io.Writer, bounds image.Rectangle, enc binary.ByteOrder, m []float64) error {
+	return binary.Write(w, enc, m)
 }
 
 func writePix(w io.Writer, pix []byte, nrows, length, stride int) error {

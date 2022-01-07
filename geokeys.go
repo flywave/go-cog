@@ -1,5 +1,9 @@
 package cog
 
+import (
+	"fmt"
+)
+
 var keywordMap = map[int]map[uint]string{
 	259:  compressionMap,
 	262:  photometricMap,
@@ -1856,4 +1860,149 @@ var verticalCSTypeMap = map[uint]string{
 	5104: "VertCS_Yellow_Sea_1956",
 	5105: "VertCS_Baltic_Sea",
 	5106: "VertCS_Caspian_Sea",
+}
+
+// GeoTiffTag data structure
+type GeoTiffTag struct {
+	Name string
+	Code int
+}
+
+func (g GeoTiffTag) String() string {
+	return fmt.Sprintf("name: %s, code: %d", g.Name, g.Code)
+}
+
+// Tags (see p. 28-41 of the spec).
+var tagMap = map[int]GeoTiffTag{
+	254: {"NewSubFileType", 254},
+	256: {"ImageWidth", 256},
+	257: {"ImageLength", 257},
+	258: {"BitsPerSample", 258},
+	259: {"Compression", 259},
+	262: {"PhotometricInterpretation", 262},
+	266: {"FillOrder", 266},
+	269: {"DocumentName", 269},
+	284: {"PlanarConfiguration", 284},
+	270: {"ImageDescription", 270},
+	271: {"Make", 271},
+	272: {"Model", 272},
+	273: {"StripOffsets", 273},
+	274: {"Orientation", 274},
+	277: {"SamplesPerPixel", 277},
+	278: {"RowsPerStrip", 278},
+	279: {"StripByteCounts", 279},
+
+	282: {"XResolution", 282},
+	283: {"YResolution", 283},
+	296: {"ResolutionUnit", 296},
+
+	305: {"Software", 305},
+	306: {"DateTime", 306},
+
+	322: {"TileWidth", 322},
+	323: {"TileLength", 323},
+	324: {"TileOffsets", 324},
+	325: {"TileByteCounts", 325},
+
+	317: {"Predictor", 317},
+	320: {"ColorMap", 320},
+	338: {"ExtraSamples", 338},
+	339: {"SampleFormat", 339},
+
+	34735: {"GeoKeyDirectoryTag", 34735},
+	34736: {"GeoDoubleParamsTag", 34736},
+	34737: {"GeoAsciiParamsTag", 34737},
+	33550: {"ModelPixelScaleTag", 33550},
+	33922: {"ModelTiepointTag", 33922},
+	34264: {"ModelTransformationTag", 34264},
+	42112: {"GDAL_METADATA", 42112},
+	42113: {"GDAL_NODATA", 42113},
+
+	1024:  {"GTModelTypeGeoKey", 1024},
+	1025:  {"GTRasterTypeGeoKey", 1025},
+	1026:  {"GTCitationGeoKey", 1026},
+	2048:  {"GeographicTypeGeoKey", 2048},
+	2049:  {"GeogCitationGeoKey", 2049},
+	2050:  {"GeogGeodeticDatumGeoKey", 2050},
+	2051:  {"GeogPrimeMeridianGeoKey", 2051},
+	2061:  {"GeogPrimeMeridianLongGeoKey", 2061},
+	2052:  {"GeogLinearUnitsGeoKey", 2052},
+	2053:  {"GeogLinearUnitSizeGeoKey", 2053},
+	2054:  {"GeogAngularUnitsGeoKey", 2054},
+	2055:  {"GeogAngularUnitSizeGeoKey", 2055},
+	2056:  {"GeogEllipsoidGeoKey", 2056},
+	2057:  {"GeogSemiMajorAxisGeoKey", 2057},
+	2058:  {"GeogSemiMinorAxisGeoKey", 2058},
+	2059:  {"GeogInvFlatteningGeoKey", 2059},
+	2060:  {"GeogAzimuthUnitsGeoKey", 2060},
+	3072:  {"ProjectedCSTypeGeoKey", 3072},
+	3073:  {"PCSCitationGeoKey", 3073},
+	3074:  {"ProjectionGeoKey", 3074},
+	3075:  {"ProjCoordTransGeoKey", 3075},
+	3076:  {"ProjLinearUnitsGeoKey", 3076},
+	3077:  {"ProjLinearUnitSizeGeoKey", 3077},
+	3078:  {"ProjStdParallel1GeoKey", 3078},
+	3079:  {"ProjStdParallel2GeoKey", 3079},
+	3080:  {"ProjNatOriginLongGeoKey", 3080},
+	3081:  {"ProjNatOriginLatGeoKey", 3081},
+	3082:  {"ProjFalseEastingGeoKey", 3082},
+	3083:  {"ProjFalseNorthingGeoKey", 3083},
+	3084:  {"ProjFalseOriginLongGeoKey", 3084},
+	3085:  {"ProjFalseOriginLatGeoKey", 3085},
+	3086:  {"ProjFalseOriginEastingGeoKey", 3086},
+	3087:  {"ProjFalseOriginNorthingGeoKey", 3087},
+	3088:  {"ProjCenterLongGeoKey", 3088},
+	3089:  {"ProjCenterLatGeoKey", 3089},
+	3090:  {"ProjCenterEastingGeoKey", 3090},
+	3091:  {"ProjFalseOriginNorthingGeoKey", 3091},
+	3092:  {"ProjScaleAtNatOriginGeoKey", 3092},
+	3093:  {"ProjScaleAtCenterGeoKey", 3093},
+	3094:  {"ProjAzimuthAngleGeoKey", 3094},
+	3095:  {"ProjStraightVertPoleLongGeoKey", 3095},
+	4096:  {"VerticalCSTypeGeoKey", 4096},
+	4097:  {"VerticalCitationGeoKey", 4097},
+	4098:  {"VerticalDatumGeoKey", 4098},
+	4099:  {"VerticalUnitsGeoKey", 4099},
+	50844: {"RPCCoefficientTag", 50844},
+	34377: {"Photoshop", 34377},
+}
+
+type GeotiffDataType int
+
+const (
+	DT_Byte      = 1
+	DT_ASCII     = 2
+	DT_Short     = 3
+	DT_Long      = 4
+	DT_Rational  = 5
+	DT_Sbyte     = 6
+	DT_Undefined = 7
+	DT_Sshort    = 8
+	DT_Slong     = 9
+	DT_Srational = 10
+	DT_Float     = 11
+	DT_Double    = 12
+)
+
+var dataTypeLengths = [...]uint32{0, 1, 1, 2, 4, 8, 1, 2, 2, 4, 8, 8, 16}
+
+var dataTypeList = []string{
+	"Byte",
+	"ASCII",
+	"Short",
+	"Long",
+	"Rational",
+	"Sbyte",
+	"Undefined",
+	"Sshort",
+	"Slong",
+	"Srational",
+	"Float",
+	"Double",
+}
+
+func (g GeotiffDataType) String() string { return dataTypeList[g-1] }
+
+func (g GeotiffDataType) GetBitLength() uint32 {
+	return dataTypeLengths[g]
 }

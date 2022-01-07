@@ -122,7 +122,7 @@ func arrayFieldSize(data interface{}, bigtiff bool) uint64 {
 	}
 }
 
-func (g *GeoTIFF) writeArray(w io.Writer, tag uint16, data interface{}, tags *tagData) error {
+func (g *Writer) writeArray(w io.Writer, tag uint16, data interface{}, tags *tagData) error {
 	var buf []byte
 	if g.bigtiff {
 		buf = make([]byte, 20)
@@ -319,7 +319,7 @@ func (g *GeoTIFF) writeArray(w io.Writer, tag uint16, data interface{}, tags *ta
 	return err
 }
 
-func (g *GeoTIFF) writeField(w io.Writer, tag uint16, data interface{}) error {
+func (g *Writer) writeField(w io.Writer, tag uint16, data interface{}) error {
 	if g.bigtiff {
 		var buf [20]byte
 		switch d := data.(type) {

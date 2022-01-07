@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"math/big"
+	"sort"
 	"strings"
 
 	"github.com/google/tiff"
@@ -70,46 +71,82 @@ type IFD struct {
 	LERCParams             []uint32  `tiff:"field,tag=50674"`
 	RPCs                   []float64 `tiff:"field,tag=50844"`
 
-	GTModelTypeGeoKey    uint16 `tiff:"field,tag=1024"`
-	GTRasterTypeGeoKey   uint16 `tiff:"field,tag=1025"`
-	GTCitationGeoKey     uint32 `tiff:"field,tag=1026"`
-	GeographicTypeGeoKey uint16 `tiff:"field,tag=2048"`
-
-	ntags            uint64
-	ntilesx, ntilesy uint64
-	nplanes          uint64 //1 if PlanarConfiguration==1, SamplesPerPixel if PlanarConfiguration==2
-	tagsSize         uint64
-	strileSize       uint64
-	r                tiff.BReader
+	ntags      uint64
+	nplanes    uint64 //1 if PlanarConfiguration==1, SamplesPerPixel if PlanarConfiguration==2
+	tagsSize   uint64
+	strileSize uint64
+	r          tiff.BReader
 }
 
+type geoKey struct {
+	geoKeyTag   uint16
+	geoDataType GeotiffDataType
+	value       interface{}
+}
+
+type ifdSortedByCode []geoKey
+
+func (a ifdSortedByCode) Len() int           { return len(a) }
+func (a ifdSortedByCode) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ifdSortedByCode) Less(i, j int) bool { return a[i].geoKeyTag < a[j].geoKeyTag }
+
 func (ifd *IFD) SetEPSG(epsg uint, rasterPixelIsArea bool) {
+	geokeys := make([]geoKey, 0)
 	if rasterPixelIsArea {
-		ifd.GTRasterTypeGeoKey = uint16(1)
+		geokeys = append(geokeys, geoKey{geoKeyTag: TagGTRasterTypeGeoKey, geoDataType: DT_Short, value: uint16(1)})
 	} else {
-		ifd.GTRasterTypeGeoKey = uint16(2)
+		geokeys = append(geokeys, geoKey{geoKeyTag: TagGTRasterTypeGeoKey, geoDataType: DT_Short, value: uint16(2)})
 	}
 
 	if v, ok := geographicTypeMap[epsg]; ok {
-		ifd.GTModelTypeGeoKey = uint16(2)
-		ifd.GeographicTypeGeoKey = uint16(epsg)
+		geokeys = append(geokeys, geoKey{geoKeyTag: TagGTModelTypeGeoKey, geoDataType: DT_Short, value: uint16(2)})
+		geokeys = append(geokeys, geoKey{geoKeyTag: TagGeographicTypeGeoKey, geoDataType: DT_Short, value: uint16(epsg)})
 		v += "|"
 		v = strings.Replace(v, "_", " ", -1)
-		ifd.GTCitationGeoKey = uint32(len(v))
+		geokeys = append(geokeys, geoKey{geoKeyTag: TagGTCitationGeoKey, geoDataType: DT_ASCII, value: v})
 	} else if v, ok := projectedCSMap[epsg]; ok {
-		ifd.GTModelTypeGeoKey = uint16(1)
-		ifd.GeographicTypeGeoKey = uint16(epsg)
+		geokeys = append(geokeys, geoKey{geoKeyTag: TagGTModelTypeGeoKey, geoDataType: DT_Short, value: uint16(1)})
+		geokeys = append(geokeys, geoKey{geoKeyTag: TagProjectedCSTypeGeoKey, geoDataType: DT_Short, value: uint16(epsg)})
 		v += "|"
 		v = strings.Replace(v, "_", " ", -1)
-		ifd.GTCitationGeoKey = uint32(len(v))
+		geokeys = append(geokeys, geoKey{geoKeyTag: TagGTCitationGeoKey, geoDataType: DT_ASCII, value: v})
 	} else {
 		if epsg != 0 {
 			panic(errors.New("Unrecognized EPSG code."))
 		} else {
 			v := "Unknown|"
-			ifd.GTCitationGeoKey = uint32(len(v))
+			geokeys = append(geokeys, geoKey{geoKeyTag: TagGTCitationGeoKey, geoDataType: DT_ASCII, value: v})
 		}
 	}
+
+	sort.Sort(ifdSortedByCode(geokeys))
+
+	gkdtData := make([]uint16, 4+len(geokeys)*4)
+	gkdtData[0] = 1
+	gkdtData[1] = 1
+	gkdtData[2] = 0
+	gkdtData[3] = uint16(len(geokeys))
+	for i, val := range geokeys {
+		gkdtData[i*4+4] = uint16(val.geoKeyTag)
+		switch t := val.value.(type) {
+		case uint16:
+			gkdtData[i*4+5] = 0
+			gkdtData[i*4+6] = 1
+			gkdtData[i*4+7] = t
+		case string:
+			gkdtData[i*4+5] = 0
+			gkdtData[i*4+6] = 1
+			gkdtData[i*4+7] = uint16(len(ifd.GeoAsciiParamsTag))
+			ifd.GeoAsciiParamsTag += t
+		case float64:
+			gkdtData[i*4+5] = 0
+			gkdtData[i*4+6] = 1
+			gkdtData[i*4+7] = uint16(len(ifd.GeoDoubleParamsTag))
+			ifd.GeoDoubleParamsTag = append(ifd.GeoDoubleParamsTag, t)
+		}
+	}
+
+	ifd.GeoKeyDirectoryTag = gkdtData
 }
 
 type GeoTransform [6]float64
@@ -237,6 +274,7 @@ func (ifd *IFD) structure(bigtiff bool) (tagCount, ifdSize, strileSize, planeCou
 		size += tagSize
 		strileSize += arrayFieldSize(ifd.TileByteCounts, bigtiff) - tagSize
 	}
+
 	if len(ifd.ExtraSamples) > 0 {
 		cnt++
 		size += arrayFieldSize(ifd.ExtraSamples, bigtiff)

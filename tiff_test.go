@@ -1,7 +1,6 @@
 package cog
 
 import (
-	"image"
 	"testing"
 
 	"github.com/flywave/go-geo"
@@ -28,7 +27,7 @@ func TestTiffWrite(t *testing.T) {
 	conf[geo.TILEGRID_TILE_SIZE] = []uint32{512, 512}
 	conf[geo.TILEGRID_ORIGIN] = geo.ORIGIN_UL
 
-	src := &RawSource{dataOrImage: data.(*image.Paletted), ctype: CTLZW, enc: tiffByteOrder}
+	src := NewSource(data, nil, CTLZW)
 
 	if src == nil {
 		t.FailNow()

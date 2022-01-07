@@ -18,7 +18,7 @@ type TileSource interface {
 
 type RawSource struct {
 	dataOrImage               interface{} // []uint16 |  []uint32 | []uint64 | []int16 |  []int32 | []int64 | []float32 | []float64 | image.Image
-	rect                      image.Rectangle
+	rect                      *image.Rectangle
 	ctype                     CompressionType
 	photometricInterpretation uint32
 	samplesPerPixel           uint32
@@ -27,6 +27,10 @@ type RawSource struct {
 	colorMap                  []uint16
 	sampleFormat              []uint16
 	enc                       binary.ByteOrder
+}
+
+func NewSource(data interface{}, rect *image.Rectangle, ctype CompressionType) *RawSource {
+	return &RawSource{dataOrImage: data, rect: rect, ctype: ctype, enc: tiffByteOrder}
 }
 
 func (s *RawSource) Reset() {
@@ -46,7 +50,10 @@ func (s *RawSource) Bounds() image.Rectangle {
 	case *image.NRGBA64:
 		return m.Bounds()
 	}
-	return s.rect
+	if s.rect != nil {
+		return *s.rect
+	}
+	return image.Rectangle{}
 }
 
 func (s *RawSource) Encode(w io.Writer, ifd *IFD) (uint32, *IFD, error) {
@@ -250,7 +257,7 @@ type TiffSource struct {
 func NewTiffSource(ifd *IFD, enc binary.ByteOrder) *TiffSource {
 	m := &Reader{ifds: []*IFD{ifd}}
 	d, r, _ := m.readData(0)
-	return &TiffSource{ifd: ifd, RawSource: RawSource{dataOrImage: d, rect: r, ctype: CompressionType(ifd.Compression), enc: enc}}
+	return &TiffSource{ifd: ifd, RawSource: RawSource{dataOrImage: d, rect: &r, ctype: CompressionType(ifd.Compression), enc: enc}}
 }
 
 func (s *TiffSource) Bounds() image.Rectangle {

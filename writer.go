@@ -4,94 +4,438 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
+
+	"github.com/flywave/go-geo"
 )
 
+var epsg4326 geo.Proj
+var tiffByteOrder binary.ByteOrder
+
+func init() {
+	epsg4326 = geo.NewProj(4326)
+	tiffByteOrder = binary.LittleEndian
+}
+
 type Writer struct {
-	tiles   []*TileLayer
 	bigtiff bool
 	enc     binary.ByteOrder
 }
 
-func (g *Writer) Close() error {
-	for i := range g.tiles {
-		g.tiles[i].Close()
+func arrayFieldSize(data interface{}, bigtiff bool) uint64 {
+	if bigtiff {
+		switch d := data.(type) {
+		case []byte:
+			if len(d) <= 8 {
+				return 20
+			}
+			return uint64(20 + len(d))
+		case []uint16:
+			if len(d) <= 4 {
+				return 20
+			}
+			return uint64(20 + 2*len(d))
+		case []uint32:
+			if len(d) <= 2 {
+				return 20
+			}
+			return uint64(20 + 4*len(d))
+		case []uint64:
+			if len(d) <= 1 {
+				return 20
+			}
+			return uint64(20 + 8*len(d))
+		case []int8:
+			if len(d) <= 8 {
+				return 20
+			}
+			return uint64(20 + len(d))
+		case []int16:
+			if len(d) <= 4 {
+				return 20
+			}
+			return uint64(20 + len(d)*2)
+		case []int32:
+			if len(d) <= 2 {
+				return 20
+			}
+			return uint64(20 + len(d)*4)
+		case []int64:
+			if len(d) <= 1 {
+				return 20
+			}
+			return uint64(20 + len(d)*8)
+		case []float32:
+			if len(d) <= 2 {
+				return 20
+			}
+			return uint64(20 + len(d)*4)
+		case []float64:
+			if len(d) <= 1 {
+				return 20
+			}
+			return uint64(20 + len(d)*8)
+		case string:
+			if len(d) <= 7 {
+				return 20
+			}
+			return uint64(20 + len(d) + 1)
+		default:
+			panic("wrong type")
+		}
+	} else {
+		switch d := data.(type) {
+		case []byte:
+			if len(d) <= 4 {
+				return 12
+			}
+			return uint64(12 + len(d))
+		case []uint16:
+			if len(d) <= 2 {
+				return 12
+			}
+			return uint64(12 + 2*len(d))
+		case []uint32:
+			if len(d) <= 1 {
+				return 12
+			}
+			return uint64(12 + 4*len(d))
+		case []int8:
+			if len(d) <= 4 {
+				return 12
+			}
+			return uint64(12 + len(d))
+		case []int16:
+			if len(d) <= 2 {
+				return 12
+			}
+			return uint64(12 + len(d)*2)
+		case []int32:
+			if len(d) <= 1 {
+				return 12
+			}
+			return uint64(12 + len(d)*4)
+		case []float32:
+			if len(d) <= 1 {
+				return 12
+			}
+			return uint64(12 + len(d)*4)
+		case string:
+			if len(d) <= 3 {
+				return 12
+			}
+			return uint64(12 + len(d) + 1)
+		case []float64:
+			return uint64(12 + len(d)*8)
+		case []int64:
+			return uint64(12 + len(d)*8)
+		case []uint64:
+			return uint64(12 + len(d)*8)
+		default:
+			panic("wrong type")
+		}
 	}
-	return nil
 }
 
-func (g *Writer) writeData(out io.Writer) error {
-	err := g.computeImageryOffsets()
-	if err != nil {
-		return err
+func (g *Writer) writeArray(w io.Writer, tag uint16, data interface{}, tags *tagData) error {
+	var buf []byte
+	if g.bigtiff {
+		buf = make([]byte, 20)
+	} else {
+		buf = make([]byte, 12)
 	}
-
-	strileData := &tagData{Offset: 16}
-	if !g.bigtiff {
-		strileData.Offset = 8
-	}
-
-	strileData.Offset += uint64(len(ghost))
-
-	for _, t := range g.tiles {
-		strileData.Offset += t.ifd.tagsSize
-	}
-
-	glen := uint64(len(ghost))
-	g.writeHeader(out)
-
-	off := uint64(16 + glen)
-	if !g.bigtiff {
-		off = 8 + glen
-	}
-	for i, t := range g.tiles {
-		next := i < len(g.tiles)
-		err := g.writeIFD(out, t.ifd, off, strileData, next)
-		if err != nil {
-			return fmt.Errorf("write ifd: %w", err)
-		}
-		off += t.ifd.tagsSize
-	}
-
-	_, err = out.Write(strileData.Bytes())
-	if err != nil {
-		return fmt.Errorf("write strile pointers: %w", err)
-	}
-
-	datas := g.tiles
-	tiles := getTiles(datas)
-
-	var data []byte
-	for tile := range tiles {
-		idx := (tile.x + tile.y*uint64(tile.layer.col))
-		bc := tile.layer.ifd.TileByteCounts[idx]
-		if bc > 0 {
-			_, err := tile.layer.tempFile.Seek(int64(tile.layer.ifd.OriginalTileOffsets[idx]), io.SeekStart)
-			if err != nil {
-				return err
+	g.enc.PutUint16(buf[0:2], tag)
+	switch d := data.(type) {
+	case []byte:
+		n := len(d)
+		g.enc.PutUint16(buf[2:4], tByte)
+		if g.bigtiff {
+			g.enc.PutUint64(buf[4:12], uint64(n))
+			if n <= 8 {
+				for i := 0; i < n; i++ {
+					buf[12+i] = d[i]
+				}
+			} else {
+				g.enc.PutUint64(buf[12:], tags.NextOffset())
+				tags.Write(d)
 			}
-			if uint32(len(data)) < bc+8 {
-				data = make([]byte, (bc+8)*2)
-			}
-			binary.LittleEndian.PutUint32(data, bc)
-			_, err = tile.layer.tempFile.Read(data[4 : 4+bc])
-			if err != nil {
-				return err
-			}
-			copy(data[4+bc:8+bc], data[bc:4+bc])
-			_, err = out.Write(data[0 : bc+8])
-			if err != nil {
-				return fmt.Errorf("write %d: %w", bc, err)
+		} else {
+			g.enc.PutUint32(buf[4:8], uint32(n))
+			if n <= 4 {
+				for i := 0; i < n; i++ {
+					buf[8+i] = d[i]
+				}
+			} else {
+				g.enc.PutUint32(buf[8:], uint32(tags.NextOffset()))
+				tags.Write(d)
 			}
 		}
+	case []uint16:
+		n := len(d)
+		g.enc.PutUint16(buf[2:4], tShort)
+		if g.bigtiff {
+			g.enc.PutUint64(buf[4:12], uint64(n))
+			if n <= 4 {
+				for i := 0; i < n; i++ {
+					g.enc.PutUint16(buf[12+i*2:], d[i])
+				}
+			} else {
+				g.enc.PutUint64(buf[12:], tags.NextOffset())
+				for i := 0; i < n; i++ {
+					binary.Write(tags, g.enc, d[i])
+				}
+			}
+		} else {
+			g.enc.PutUint32(buf[4:8], uint32(n))
+			if n <= 2 {
+				for i := 0; i < n; i++ {
+					g.enc.PutUint16(buf[8+i*2:], d[i])
+				}
+			} else {
+				g.enc.PutUint32(buf[8:], uint32(tags.NextOffset()))
+				for i := 0; i < n; i++ {
+					binary.Write(tags, g.enc, d[i])
+				}
+			}
+		}
+	case []uint32:
+		n := len(d)
+		g.enc.PutUint16(buf[2:4], tLong)
+		if g.bigtiff {
+			g.enc.PutUint64(buf[4:12], uint64(n))
+			if n <= 2 {
+				for i := 0; i < n; i++ {
+					g.enc.PutUint32(buf[12+i*4:], d[i])
+				}
+			} else {
+				g.enc.PutUint64(buf[12:], tags.NextOffset())
+				for i := 0; i < n; i++ {
+					binary.Write(tags, g.enc, d[i])
+				}
+			}
+		} else {
+			g.enc.PutUint32(buf[4:8], uint32(n))
+			if n <= 1 {
+				for i := 0; i < n; i++ {
+					g.enc.PutUint32(buf[8:], d[i])
+				}
+			} else {
+				g.enc.PutUint32(buf[8:], uint32(tags.NextOffset()))
+				for i := 0; i < n; i++ {
+					binary.Write(tags, g.enc, d[i])
+				}
+			}
+		}
+	case []uint64:
+		n := len(d)
+		g.enc.PutUint16(buf[2:4], tLong8)
+		if g.bigtiff {
+			g.enc.PutUint64(buf[4:12], uint64(n))
+			if n <= 1 {
+				g.enc.PutUint64(buf[12:], d[0])
+			} else {
+				g.enc.PutUint64(buf[12:], tags.NextOffset())
+				for i := 0; i < n; i++ {
+					binary.Write(tags, g.enc, d[i])
+				}
+			}
+		} else {
+			g.enc.PutUint32(buf[4:8], uint32(n))
+			g.enc.PutUint32(buf[8:], uint32(tags.NextOffset()))
+			for i := 0; i < n; i++ {
+				binary.Write(tags, g.enc, d[i])
+			}
+		}
+	case []float32:
+		n := len(d)
+		g.enc.PutUint16(buf[2:4], tFloat)
+		if g.bigtiff {
+			g.enc.PutUint64(buf[4:12], uint64(n))
+			if n <= 2 {
+				for i := 0; i < n; i++ {
+					g.enc.PutUint32(buf[12+i*4:], math.Float32bits(d[i]))
+				}
+			} else {
+				g.enc.PutUint64(buf[12:], tags.NextOffset())
+				for i := 0; i < n; i++ {
+					binary.Write(tags, g.enc, math.Float32bits(d[i]))
+				}
+			}
+		} else {
+			g.enc.PutUint32(buf[4:8], uint32(n))
+			if n <= 1 {
+				for i := 0; i < n; i++ {
+					g.enc.PutUint32(buf[8:], math.Float32bits(d[i]))
+				}
+			} else {
+				g.enc.PutUint32(buf[8:], uint32(tags.NextOffset()))
+				for i := 0; i < n; i++ {
+					binary.Write(tags, g.enc, math.Float32bits(d[i]))
+				}
+			}
+		}
+	case []float64:
+		n := len(d)
+		g.enc.PutUint16(buf[2:4], tDouble)
+		if g.bigtiff {
+			g.enc.PutUint64(buf[4:12], uint64(n))
+			if n == 1 {
+				for i := 0; i < n; i++ {
+					g.enc.PutUint64(buf[12+i*4:], math.Float64bits(d[0]))
+				}
+			} else {
+				g.enc.PutUint64(buf[12:], tags.NextOffset())
+				for i := 0; i < n; i++ {
+					binary.Write(tags, g.enc, math.Float64bits(d[i]))
+				}
+			}
+		} else {
+			g.enc.PutUint32(buf[4:8], uint32(n))
+			g.enc.PutUint32(buf[8:], uint32(tags.NextOffset()))
+			for i := 0; i < n; i++ {
+				binary.Write(tags, g.enc, math.Float64bits(d[i]))
+			}
+		}
+	case string:
+		n := len(d) + 1
+		g.enc.PutUint16(buf[2:4], tAscii)
+		if g.bigtiff {
+			g.enc.PutUint64(buf[4:12], uint64(n))
+			if n <= 8 {
+				for i := 0; i < n-1; i++ {
+					buf[12+i] = byte(d[i])
+				}
+				buf[12+n-1] = 0
+			} else {
+				g.enc.PutUint64(buf[12:], tags.NextOffset())
+				tags.Write(append([]byte(d), 0))
+			}
+		} else {
+			g.enc.PutUint32(buf[4:8], uint32(n))
+			if n <= 4 {
+				for i := 0; i < n-1; i++ {
+					buf[8+i] = d[i]
+				}
+				buf[8+n-1] = 0
+			} else {
+				g.enc.PutUint32(buf[8:], uint32(tags.NextOffset()))
+				tags.Write(append([]byte(d), 0))
+			}
+		}
+	default:
+		return fmt.Errorf("unsupported type %v", d)
 	}
-
+	var err error
+	if g.bigtiff {
+		_, err = w.Write(buf[0:20])
+	} else {
+		_, err = w.Write(buf[0:12])
+	}
 	return err
 }
 
-func (g *Writer) computeStructure() {
-	for _, t := range g.tiles {
-		ifd := t.ifd
-		ifd.ntags, ifd.tagsSize, ifd.strileSize, ifd.nplanes = ifd.structure(g.bigtiff)
+func (g *Writer) writeField(w io.Writer, tag uint16, data interface{}) error {
+	if g.bigtiff {
+		var buf [20]byte
+		switch d := data.(type) {
+		case byte:
+			g.enc.PutUint16(buf[0:2], tag)
+			g.enc.PutUint16(buf[2:4], tByte)
+			g.enc.PutUint64(buf[4:12], 1)
+			buf[12] = d
+		case uint16:
+			g.enc.PutUint16(buf[0:2], tag)
+			g.enc.PutUint16(buf[2:4], tShort)
+			g.enc.PutUint64(buf[4:12], 1)
+			g.enc.PutUint16(buf[12:], d)
+		case uint32:
+			g.enc.PutUint16(buf[0:2], tag)
+			g.enc.PutUint16(buf[2:4], tLong)
+			g.enc.PutUint64(buf[4:12], 1)
+			g.enc.PutUint32(buf[12:], d)
+		case uint64:
+			g.enc.PutUint16(buf[0:2], tag)
+			g.enc.PutUint16(buf[2:4], tLong8)
+			g.enc.PutUint64(buf[4:12], 1)
+			g.enc.PutUint64(buf[12:], d)
+		case float32:
+			g.enc.PutUint16(buf[0:2], tag)
+			g.enc.PutUint16(buf[2:4], tFloat)
+			g.enc.PutUint64(buf[4:12], 1)
+			g.enc.PutUint32(buf[12:], math.Float32bits(d))
+		case float64:
+			g.enc.PutUint16(buf[0:2], tag)
+			g.enc.PutUint16(buf[2:4], tDouble)
+			g.enc.PutUint64(buf[4:12], 1)
+			g.enc.PutUint64(buf[12:], math.Float64bits(d))
+		case int8:
+			g.enc.PutUint16(buf[0:2], tag)
+			g.enc.PutUint16(buf[2:4], tSByte)
+			g.enc.PutUint64(buf[4:12], 1)
+			buf[12] = byte(d)
+		case int16:
+			g.enc.PutUint16(buf[0:2], tag)
+			g.enc.PutUint16(buf[2:4], tSShort)
+			g.enc.PutUint64(buf[4:12], 1)
+			g.enc.PutUint16(buf[12:], uint16(d))
+		case int32:
+			g.enc.PutUint16(buf[0:2], tag)
+			g.enc.PutUint16(buf[2:4], tSLong)
+			g.enc.PutUint64(buf[4:12], 1)
+			g.enc.PutUint32(buf[12:], uint32(d))
+		case int64:
+			g.enc.PutUint16(buf[0:2], tag)
+			g.enc.PutUint16(buf[2:4], tSLong8)
+			g.enc.PutUint64(buf[4:12], 1)
+			g.enc.PutUint64(buf[12:], uint64(d))
+		default:
+			panic("unsupported type")
+		}
+		_, err := w.Write(buf[0:20])
+		return err
+	} else {
+		var buf [12]byte
+		switch d := data.(type) {
+		case byte:
+			g.enc.PutUint16(buf[0:2], tag)
+			g.enc.PutUint16(buf[2:4], tByte)
+			g.enc.PutUint32(buf[4:8], 1)
+			buf[8] = d
+		case uint16:
+			g.enc.PutUint16(buf[0:2], tag)
+			g.enc.PutUint16(buf[2:4], tShort)
+			g.enc.PutUint32(buf[4:8], 1)
+			g.enc.PutUint16(buf[8:], d)
+		case uint32:
+			g.enc.PutUint16(buf[0:2], tag)
+			g.enc.PutUint16(buf[2:4], tLong)
+			g.enc.PutUint32(buf[4:8], 1)
+			g.enc.PutUint32(buf[8:], d)
+		case float32:
+			g.enc.PutUint16(buf[0:2], tag)
+			g.enc.PutUint16(buf[2:4], tFloat)
+			g.enc.PutUint32(buf[4:8], 1)
+			g.enc.PutUint32(buf[8:], math.Float32bits(d))
+		case int8:
+			g.enc.PutUint16(buf[0:2], tag)
+			g.enc.PutUint16(buf[2:4], tSByte)
+			g.enc.PutUint32(buf[4:8], 1)
+			buf[8] = byte(d)
+		case int16:
+			g.enc.PutUint16(buf[0:2], tag)
+			g.enc.PutUint16(buf[2:4], tSShort)
+			g.enc.PutUint32(buf[4:8], 1)
+			g.enc.PutUint16(buf[8:], uint16(d))
+		case int32:
+			g.enc.PutUint16(buf[0:2], tag)
+			g.enc.PutUint16(buf[2:4], tSLong)
+			g.enc.PutUint32(buf[4:8], 1)
+			g.enc.PutUint32(buf[8:], uint32(d))
+		default:
+			panic("unsupported type")
+		}
+		_, err := w.Write(buf[0:12])
+		return err
 	}
 }
 
@@ -102,68 +446,6 @@ BLOCK_LEADER=SIZE_AS_UINT4
 BLOCK_TRAILER=LAST_4_BYTES_REPEATED
 KNOWN_INCOMPATIBLE_EDITION=NO
   `
-
-func (g *Writer) computeImageryOffsets() error {
-	for _, t := range g.tiles {
-		err := t.computeStructure(g.enc)
-		if err != nil {
-			return err
-		}
-		ifd := t.ifd
-		if g.bigtiff {
-			ifd.NewTileOffsets64 = make([]uint64, len(ifd.OriginalTileOffsets))
-			ifd.NewTileOffsets32 = nil
-		} else {
-			ifd.NewTileOffsets32 = make([]uint32, len(ifd.OriginalTileOffsets))
-			ifd.NewTileOffsets64 = nil
-		}
-	}
-	g.computeStructure()
-
-	dataOffset := uint64(16)
-	if !g.bigtiff {
-		dataOffset = 8
-	}
-
-	dataOffset += uint64(len(ghost)) + 4
-
-	for _, t := range g.tiles {
-		dataOffset += t.ifd.strileSize + t.ifd.tagsSize
-	}
-
-	datas := g.tiles
-	tiles := getTiles(datas)
-	for tile := range tiles {
-		tileidx := (tile.x + tile.y*uint64(tile.layer.col))
-		cnt := uint64(tile.layer.ifd.TileByteCounts[tileidx])
-		if cnt > 0 {
-			if g.bigtiff {
-				tile.layer.ifd.NewTileOffsets64[tileidx] = dataOffset
-			} else {
-				if dataOffset > uint64(^uint32(0)) { //^uint32(0) is max uint32
-					//rerun with bigtiff support
-
-					//first empty out the tiles channel to avoid a goroutine leak
-					for range tiles {
-						//skip
-					}
-					g.bigtiff = true
-					return g.computeImageryOffsets()
-				}
-				tile.layer.ifd.NewTileOffsets32[tileidx] = uint32(dataOffset)
-			}
-			dataOffset += uint64(tile.layer.ifd.TileByteCounts[tileidx]) + 8
-		} else {
-			if g.bigtiff {
-				tile.layer.ifd.NewTileOffsets64[tileidx] = 0
-			} else {
-				tile.layer.ifd.NewTileOffsets32[tileidx] = 0
-			}
-		}
-	}
-
-	return nil
-}
 
 func (g *Writer) writeHeader(w io.Writer) error {
 	glen := uint64(len(ghost))
@@ -439,28 +721,4 @@ func (g *Writer) writeIFD(w io.Writer, ifd *IFD, offset uint64, striledata *tagD
 		return fmt.Errorf("write parea: %w", err)
 	}
 	return nil
-}
-
-type TiledTiff struct {
-	tile  *Tile
-	x, y  uint64
-	layer *TileLayer
-}
-
-func getTiles(d []*TileLayer) chan TiledTiff {
-	ch := make(chan TiledTiff)
-	go func() {
-		defer close(ch)
-		for _, l := range d {
-			for _, tile := range l.tiles {
-				ch <- TiledTiff{
-					tile:  tile,
-					x:     uint64(tile.block[0]),
-					y:     uint64(tile.block[1]),
-					layer: l,
-				}
-			}
-		}
-	}()
-	return ch
 }

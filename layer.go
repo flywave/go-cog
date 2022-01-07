@@ -2,6 +2,8 @@ package cog
 
 import (
 	"encoding/binary"
+	"errors"
+	"io"
 	"io/ioutil"
 	"math"
 	"os"
@@ -87,12 +89,29 @@ func NewTileLayer(box vec2d.Rect, level int, grid geo.TileGrid) *TileLayer {
 	return &TileLayer{row: si[1], col: si[0], level: level, box: rect, grid: grid, tilemap: tilemap, tiles: tiles}
 }
 
-func (l *TileLayer) GetTile(x, y int) *Tile {
-	id := [3]int{x, y, l.level}
-	if t, ok := l.tilemap[id]; ok {
+func (l *TileLayer) GetTile(t [3]int) *Tile {
+	if t[2] != l.level {
+		return nil
+	}
+	if t, ok := l.tilemap[t]; ok {
 		return t
 	}
 	return nil
+}
+
+func (l *TileLayer) GetReader() io.ReadSeeker {
+	return l.tempFile
+}
+
+func (l *TileLayer) SetSource(t [3]int, src TileSource) error {
+	if t[2] != l.level {
+		return errors.New("tile not found")
+	}
+	if t, ok := l.tilemap[t]; ok {
+		t.Src = src
+		return nil
+	}
+	return errors.New("tile not found")
 }
 
 func (l *TileLayer) GetTileSize() [2]uint32 {
@@ -105,24 +124,17 @@ func (l *TileLayer) GetImageSize() [2]uint64 {
 
 	res := l.grid.Resolution(l.level)
 
-	return [2]uint64{uint64(math.Floor(width / res)), uint64(math.Floor(height / res))}
+	return [2]uint64{uint64(math.Ceil(width / res)), uint64(math.Ceil(height / res))}
 }
 
 func (l *TileLayer) GetTransform() GeoTransform {
 	res := l.grid.Resolution(l.level)
-	return GeoTransform{l.box.Min[0], res, 0, l.box.Max[1], 0, -res}
-}
-
-func (l *TileLayer) GetEPSG() uint32 {
-	return uint32(geo.GetEpsgNum(l.grid.Srs.GetSrsCode()))
-}
-
-func (l *TileLayer) GetBounds() vec2d.Rect {
-	return l.box
+	box := l.grid.Srs.TransformRectTo(epsg4326, l.box, 16)
+	return GeoTransform{box.Min[0], res, 0, box.Max[1], 0, -res}
 }
 
 func (l *TileLayer) setupIFD() {
-	l.ifd.SetEPSG(uint(l.GetEPSG()), true)
+	l.ifd.SetEPSG(uint(4326), true)
 	si := l.GetImageSize()
 	l.ifd.ImageWidth, l.ifd.ImageLength = uint64(si[0]), uint64(si[1])
 
@@ -147,8 +159,7 @@ func (l *TileLayer) Close() error {
 	return nil
 }
 
-func (l *TileLayer) computeStructure(enc binary.ByteOrder) error {
-
+func (l *TileLayer) encode(enc binary.ByteOrder, clearOnSave bool) error {
 	p, err := ioutil.TempFile(os.TempDir(), "tile-")
 
 	if err != nil {
@@ -187,6 +198,12 @@ func (l *TileLayer) computeStructure(enc binary.ByteOrder) error {
 	l.tempFile = p
 
 	l.setupIFD()
+
+	if clearOnSave {
+		for i := range l.tiles {
+			l.tiles[i].Src.Reset()
+		}
+	}
 
 	return nil
 }

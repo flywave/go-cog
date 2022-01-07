@@ -272,34 +272,6 @@ func ToRGBA(data []float64) [][4]uint8 {
 	return bytes
 }
 
-func loadMultipleTIFFs(tifs []tiff.TIFF) ([]*IFD, error) {
-	ifds := make([]*IFD, 0)
-	for _, tif := range tifs {
-		tifds := tif.IFDs()
-		for i := range tifds {
-			ifd, err := loadIFD(tif.R(), tifds[i])
-			if err != nil {
-				return nil, err
-			}
-			ifds = append(ifds, ifd)
-		}
-	}
-	return ifds, nil
-}
-
-func loadSingleTIFF(tif tiff.TIFF) ([]*IFD, error) {
-	tifds := tif.IFDs()
-	ifds := make([]*IFD, len(tifds))
-	var err error
-	for i := range tifds {
-		ifds[i], err = loadIFD(tif.R(), tifds[i])
-		if err != nil {
-			return nil, err
-		}
-	}
-	return ifds, nil
-}
-
 func loadIFD(r tiff.BReader, tifd tiff.IFD) (*IFD, error) {
 	ifd := &IFD{r: r}
 	err := tiff.UnmarshalIFD(tifd, ifd)
@@ -433,28 +405,6 @@ func writePix(w io.Writer, pix []byte, nrows, length, stride int) error {
 			return err
 		}
 		pix = pix[stride:]
-	}
-	return nil
-}
-
-func sanityCheck(tiffs []tiff.TIFF) error {
-	if len(tiffs) == 0 {
-		return fmt.Errorf("no tiffs")
-	}
-	order := tiffs[0].Order()
-	if order != "MM" && order != "II" {
-		return fmt.Errorf("unknown byte order")
-	}
-	for it, tif := range tiffs {
-		if tif.Order() != order {
-			return fmt.Errorf("inconsistent byte order")
-		}
-		for ii, ifd := range tif.IFDs() {
-			err := sanityCheckIFD(ifd)
-			if err != nil {
-				return fmt.Errorf("tif %d ifd %d: %w", it, ii, err)
-			}
-		}
 	}
 	return nil
 }

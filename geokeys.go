@@ -1,33 +1,29 @@
 package cog
 
-import (
-	"fmt"
-)
-
-var keywordMap = map[int]map[uint]string{
-	259:  compressionMap,
-	262:  photometricMap,
-	284:  planarConfiguationMap,
-	296:  resolutionUnitsMap,
-	317:  predictorMap,
-	339:  sampleFormatMap,
-	1024: gtModelTypeGeoKeyMap,
-	1025: gtRasterTypeGeoKeyMap,
-	2048: geographicTypeMap,
-	2050: geodeticDatumMap,
-	2051: primeMeridianMap,
-	2052: linearUnitsMap,
-	2054: angularUnitsMap,
-	2056: ellipsoidMap,
-	3072: projectedCSMap,
-	3074: projectionMap,
-	3075: projCoordTransGeoKeyMap,
-	3076: linearUnitsMap,
-	4096: verticalCSTypeMap,
-	4099: verticalUnitsMap,
+var KeywordMap = map[int]map[uint]string{
+	259:  CompressionMap,
+	262:  PhotometricMap,
+	284:  PlanarConfiguationMap,
+	296:  ResolutionUnitsMap,
+	317:  PredictorMap,
+	339:  SampleFormatMap,
+	1024: GtModelTypeGeoKeyMap,
+	1025: GtRasterTypeGeoKeyMap,
+	2048: GeographicTypeMap,
+	2050: GeodeticDatumMap,
+	2051: PrimeMeridianMap,
+	2052: LinearUnitsMap,
+	2054: AngularUnitsMap,
+	2056: EllipsoidMap,
+	3072: ProjectedCSMap,
+	3074: ProjectionMap,
+	3075: ProjCoordTransGeoKeyMap,
+	3076: LinearUnitsMap,
+	4096: VerticalCSTypeMap,
+	4099: VerticalUnitsMap,
 }
 
-var photometricMap = map[uint]string{
+var PhotometricMap = map[uint]string{
 	0: "WhiteIsZero",
 	1: "BlackIsZero",
 	2: "RGB",
@@ -38,13 +34,13 @@ var photometricMap = map[uint]string{
 	7: "pCIELab",
 }
 
-var resolutionUnitsMap = map[uint]string{
+var ResolutionUnitsMap = map[uint]string{
 	1: "None",
 	2: "Dots per inch",
 	3: "Dots per centimeter",
 }
 
-var compressionMap = map[uint]string{
+var CompressionMap = map[uint]string{
 	1:     "None",
 	2:     "CCITT",
 	3:     "G3",
@@ -57,35 +53,35 @@ var compressionMap = map[uint]string{
 	32946: "DeflateOld",
 }
 
-var predictorMap = map[uint]string{
+var PredictorMap = map[uint]string{
 	1: "None",
 	2: "Horizontal",
 }
 
-var planarConfiguationMap = map[uint]string{
+var PlanarConfiguationMap = map[uint]string{
 	1: "Contiguous",
 	2: "Separate",
 }
 
-var sampleFormatMap = map[uint]string{
+var SampleFormatMap = map[uint]string{
 	1: "Unsigned integer data",
 	2: "Signed integer data",
 	3: "Floating point data",
 	4: "Undefined data format",
 }
 
-var gtModelTypeGeoKeyMap = map[uint]string{
+var GtModelTypeGeoKeyMap = map[uint]string{
 	1: "ModelTypeProjected",
 	2: "ModelTypeGeographic",
 	3: "ModelTypeGeocentric",
 }
 
-var gtRasterTypeGeoKeyMap = map[uint]string{
+var GtRasterTypeGeoKeyMap = map[uint]string{
 	1: "RasterPixelIsArea",
 	2: "RasterPixelIsPoint",
 }
 
-var linearUnitsMap = map[uint]string{
+var LinearUnitsMap = map[uint]string{
 	9001: "Linear_Meter",
 	9002: "Linear_Foot",
 	9003: "Linear_Foot_US_Survey",
@@ -103,7 +99,7 @@ var linearUnitsMap = map[uint]string{
 	9015: "Linear_Mile_International_Nautical",
 }
 
-var angularUnitsMap = map[uint]string{
+var AngularUnitsMap = map[uint]string{
 	9101: "Angular_Radian",
 	9102: "Angular_Degree",
 	9103: "Angular_Arc_Minute",
@@ -114,7 +110,7 @@ var angularUnitsMap = map[uint]string{
 	9108: "Angular_DMS_Hemisphere",
 }
 
-var verticalUnitsMap = map[uint]string{
+var VerticalUnitsMap = map[uint]string{
 	9001: "Linear_Meter",
 	9002: "Linear_Foot",
 	9003: "Linear_Foot_US_Survey",
@@ -132,7 +128,7 @@ var verticalUnitsMap = map[uint]string{
 	9015: "Linear_Mile_International_Nautical",
 }
 
-var geographicTypeMap = map[uint]string{
+var GeographicTypeMap = map[uint]string{
 	4201: "GCS_Adindan",
 	4202: "GCS_AGD66",
 	4203: "GCS_AGD84",
@@ -303,7 +299,7 @@ var geographicTypeMap = map[uint]string{
 	4035: "GCSE_Sphere",
 }
 
-var geodeticDatumMap = map[uint]string{
+var GeodeticDatumMap = map[uint]string{
 	6201: "Datum_Adindan",
 	6202: "Datum_Australian_Geodetic_Datum_1966",
 	6203: "Datum_Australian_Geodetic_Datum_1984",
@@ -461,7 +457,7 @@ var geodeticDatumMap = map[uint]string{
 	6035: "DatumE_Sphere",
 }
 
-var primeMeridianMap = map[uint]string{
+var PrimeMeridianMap = map[uint]string{
 	8901: "PM_Greenwich",
 	8902: "PM_Lisbon",
 	8903: "PM_Paris",
@@ -475,7 +471,7 @@ var primeMeridianMap = map[uint]string{
 	8911: "PM_Stockholm",
 }
 
-var ellipsoidMap = map[uint]string{
+var EllipsoidMap = map[uint]string{
 	7001: "Ellipse_Airy_1830",
 	7002: "Ellipse_Airy_Modified_1849",
 	7003: "Ellipse_Australian_National_Spheroid",
@@ -513,7 +509,7 @@ var ellipsoidMap = map[uint]string{
 	7035: "Ellipse_Sphere",
 }
 
-var projectedCSMap = map[uint]string{
+var ProjectedCSMap = map[uint]string{
 	20137: "PCS_Adindan_UTM_zone_37N",
 	20138: "PCS_Adindan_UTM_zone_38N",
 	20248: "PCS_AGD66_AMG_zone_48",
@@ -1490,7 +1486,7 @@ var projectedCSMap = map[uint]string{
 	32760: "PCS_WGS84_UTM_zone_60S",
 }
 
-var projectionMap = map[uint]string{
+var ProjectionMap = map[uint]string{
 	10101: "Proj_Alabama_CS27_East",
 	10102: "Proj_Alabama_CS27_West",
 	10131: "Proj_Alabama_CS83_East",
@@ -1791,7 +1787,7 @@ var projectionMap = map[uint]string{
 	19912: "Proj_RSO_Borneo",
 }
 
-var projCoordTransGeoKeyMap = map[uint]string{
+var ProjCoordTransGeoKeyMap = map[uint]string{
 	1:  "CT_TransverseMercator",
 	2:  "CT_TransvMercator_Modified_Alaska",
 	3:  "CT_ObliqueMercator",
@@ -1821,7 +1817,7 @@ var projCoordTransGeoKeyMap = map[uint]string{
 	27: "CT_TransvMercator_SouthOriented",
 }
 
-var verticalCSTypeMap = map[uint]string{
+var VerticalCSTypeMap = map[uint]string{
 	5001: "VertCS_Airy_1830_ellipsoid",
 	5002: "VertCS_Airy_Modified_1849_ellipsoid",
 	5003: "VertCS_ANS_ellipsoid",
@@ -1860,111 +1856,6 @@ var verticalCSTypeMap = map[uint]string{
 	5104: "VertCS_Yellow_Sea_1956",
 	5105: "VertCS_Baltic_Sea",
 	5106: "VertCS_Caspian_Sea",
-}
-
-// GeoTiffTag data structure
-type GeoTiffTag struct {
-	Name string
-	Code int
-}
-
-func (g GeoTiffTag) String() string {
-	return fmt.Sprintf("name: %s, code: %d", g.Name, g.Code)
-}
-
-// Tags (see p. 28-41 of the spec).
-var tagMap = map[int]GeoTiffTag{
-	254: {"NewSubFileType", 254},
-	256: {"ImageWidth", 256},
-	257: {"ImageLength", 257},
-	258: {"BitsPerSample", 258},
-	259: {"Compression", 259},
-	262: {"PhotometricInterpretation", 262},
-	266: {"FillOrder", 266},
-	269: {"DocumentName", 269},
-	284: {"PlanarConfiguration", 284},
-	270: {"ImageDescription", 270},
-	271: {"Make", 271},
-	272: {"Model", 272},
-	273: {"StripOffsets", 273},
-	274: {"Orientation", 274},
-	277: {"SamplesPerPixel", 277},
-	278: {"RowsPerStrip", 278},
-	279: {"StripByteCounts", 279},
-
-	282: {"XResolution", 282},
-	283: {"YResolution", 283},
-	296: {"ResolutionUnit", 296},
-
-	305: {"Software", 305},
-	306: {"DateTime", 306},
-
-	322: {"TileWidth", 322},
-	323: {"TileLength", 323},
-	324: {"TileOffsets", 324},
-	325: {"TileByteCounts", 325},
-
-	317: {"Predictor", 317},
-	320: {"ColorMap", 320},
-	338: {"ExtraSamples", 338},
-	339: {"SampleFormat", 339},
-
-	34735: {"GeoKeyDirectoryTag", 34735},
-	34736: {"GeoDoubleParamsTag", 34736},
-	34737: {"GeoAsciiParamsTag", 34737},
-	33550: {"ModelPixelScaleTag", 33550},
-	33922: {"ModelTiepointTag", 33922},
-	34264: {"ModelTransformationTag", 34264},
-	42112: {"GDAL_METADATA", 42112},
-	42113: {"GDAL_NODATA", 42113},
-
-	1024:  {"GTModelTypeGeoKey", 1024},
-	1025:  {"GTRasterTypeGeoKey", 1025},
-	1026:  {"GTCitationGeoKey", 1026},
-	2048:  {"GeographicTypeGeoKey", 2048},
-	2049:  {"GeogCitationGeoKey", 2049},
-	2050:  {"GeogGeodeticDatumGeoKey", 2050},
-	2051:  {"GeogPrimeMeridianGeoKey", 2051},
-	2061:  {"GeogPrimeMeridianLongGeoKey", 2061},
-	2052:  {"GeogLinearUnitsGeoKey", 2052},
-	2053:  {"GeogLinearUnitSizeGeoKey", 2053},
-	2054:  {"GeogAngularUnitsGeoKey", 2054},
-	2055:  {"GeogAngularUnitSizeGeoKey", 2055},
-	2056:  {"GeogEllipsoidGeoKey", 2056},
-	2057:  {"GeogSemiMajorAxisGeoKey", 2057},
-	2058:  {"GeogSemiMinorAxisGeoKey", 2058},
-	2059:  {"GeogInvFlatteningGeoKey", 2059},
-	2060:  {"GeogAzimuthUnitsGeoKey", 2060},
-	3072:  {"ProjectedCSTypeGeoKey", 3072},
-	3073:  {"PCSCitationGeoKey", 3073},
-	3074:  {"ProjectionGeoKey", 3074},
-	3075:  {"ProjCoordTransGeoKey", 3075},
-	3076:  {"ProjLinearUnitsGeoKey", 3076},
-	3077:  {"ProjLinearUnitSizeGeoKey", 3077},
-	3078:  {"ProjStdParallel1GeoKey", 3078},
-	3079:  {"ProjStdParallel2GeoKey", 3079},
-	3080:  {"ProjNatOriginLongGeoKey", 3080},
-	3081:  {"ProjNatOriginLatGeoKey", 3081},
-	3082:  {"ProjFalseEastingGeoKey", 3082},
-	3083:  {"ProjFalseNorthingGeoKey", 3083},
-	3084:  {"ProjFalseOriginLongGeoKey", 3084},
-	3085:  {"ProjFalseOriginLatGeoKey", 3085},
-	3086:  {"ProjFalseOriginEastingGeoKey", 3086},
-	3087:  {"ProjFalseOriginNorthingGeoKey", 3087},
-	3088:  {"ProjCenterLongGeoKey", 3088},
-	3089:  {"ProjCenterLatGeoKey", 3089},
-	3090:  {"ProjCenterEastingGeoKey", 3090},
-	3091:  {"ProjFalseOriginNorthingGeoKey", 3091},
-	3092:  {"ProjScaleAtNatOriginGeoKey", 3092},
-	3093:  {"ProjScaleAtCenterGeoKey", 3093},
-	3094:  {"ProjAzimuthAngleGeoKey", 3094},
-	3095:  {"ProjStraightVertPoleLongGeoKey", 3095},
-	4096:  {"VerticalCSTypeGeoKey", 4096},
-	4097:  {"VerticalCitationGeoKey", 4097},
-	4098:  {"VerticalDatumGeoKey", 4098},
-	4099:  {"VerticalUnitsGeoKey", 4099},
-	50844: {"RPCCoefficientTag", 50844},
-	34377: {"Photoshop", 34377},
 }
 
 type GeotiffDataType int

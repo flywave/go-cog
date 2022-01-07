@@ -90,7 +90,7 @@ func (a ifdSortedByCode) Len() int           { return len(a) }
 func (a ifdSortedByCode) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a ifdSortedByCode) Less(i, j int) bool { return a[i].geoKeyTag < a[j].geoKeyTag }
 
-func (ifd *IFD) SetEPSG(epsg uint, rasterPixelIsArea bool) {
+func (ifd *IFD) SetEPSG(epsg uint, rasterPixelIsArea bool) error {
 	geokeys := make([]geoKey, 0)
 	if rasterPixelIsArea {
 		geokeys = append(geokeys, geoKey{geoKeyTag: TagGTRasterTypeGeoKey, geoDataType: DT_Short, value: uint16(1)})
@@ -98,13 +98,13 @@ func (ifd *IFD) SetEPSG(epsg uint, rasterPixelIsArea bool) {
 		geokeys = append(geokeys, geoKey{geoKeyTag: TagGTRasterTypeGeoKey, geoDataType: DT_Short, value: uint16(2)})
 	}
 
-	if v, ok := geographicTypeMap[epsg]; ok {
+	if v, ok := GeographicTypeMap[epsg]; ok {
 		geokeys = append(geokeys, geoKey{geoKeyTag: TagGTModelTypeGeoKey, geoDataType: DT_Short, value: uint16(2)})
 		geokeys = append(geokeys, geoKey{geoKeyTag: TagGeographicTypeGeoKey, geoDataType: DT_Short, value: uint16(epsg)})
 		v += "|"
 		v = strings.Replace(v, "_", " ", -1)
 		geokeys = append(geokeys, geoKey{geoKeyTag: TagGTCitationGeoKey, geoDataType: DT_ASCII, value: v})
-	} else if v, ok := projectedCSMap[epsg]; ok {
+	} else if v, ok := ProjectedCSMap[epsg]; ok {
 		geokeys = append(geokeys, geoKey{geoKeyTag: TagGTModelTypeGeoKey, geoDataType: DT_Short, value: uint16(1)})
 		geokeys = append(geokeys, geoKey{geoKeyTag: TagProjectedCSTypeGeoKey, geoDataType: DT_Short, value: uint16(epsg)})
 		v += "|"
@@ -112,7 +112,7 @@ func (ifd *IFD) SetEPSG(epsg uint, rasterPixelIsArea bool) {
 		geokeys = append(geokeys, geoKey{geoKeyTag: TagGTCitationGeoKey, geoDataType: DT_ASCII, value: v})
 	} else {
 		if epsg != 0 {
-			panic(errors.New("Unrecognized EPSG code."))
+			return errors.New("unrecognized EPSG code")
 		} else {
 			v := "Unknown|"
 			geokeys = append(geokeys, geoKey{geoKeyTag: TagGTCitationGeoKey, geoDataType: DT_ASCII, value: v})
@@ -147,6 +147,8 @@ func (ifd *IFD) SetEPSG(epsg uint, rasterPixelIsArea bool) {
 	}
 
 	ifd.GeoKeyDirectoryTag = gkdtData
+
+	return nil
 }
 
 type GeoTransform [6]float64

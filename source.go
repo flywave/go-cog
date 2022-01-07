@@ -13,6 +13,7 @@ import (
 type TileSource interface {
 	Bounds() image.Rectangle
 	Encode(w io.Writer, ifd *IFD) (uint32, *IFD, error)
+	Reset()
 }
 
 type RawSource struct {
@@ -26,6 +27,10 @@ type RawSource struct {
 	colorMap                  []uint16
 	sampleFormat              []uint16
 	enc                       binary.ByteOrder
+}
+
+func (s *RawSource) Reset() {
+	s.dataOrImage = nil
 }
 
 func (s *RawSource) Bounds() image.Rectangle {

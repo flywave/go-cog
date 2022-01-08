@@ -37,7 +37,7 @@ func TestTiffWrite(t *testing.T) {
 
 	bbox := grid.TileBBox([3]int{13733, 6366, 14}, false)
 
-	err := WriteTile("./test_data/tiled.tif", src, bbox, 14, grid, nil)
+	err := WriteTile("./test_data/tiled.tif", src, bbox, srs900913, [2]uint32{512, 512}, true, nil)
 
 	if err != nil {
 		t.FailNow()

@@ -88,6 +88,10 @@ func ccittFillOrder(tiffFillOrder uint) ccitt.Order {
 	return ccitt.MSB
 }
 
+func (m Reader) GetSize(i int) [2]uint32 {
+	return [2]uint32{uint32(m.ifds[i].ImageWidth), uint32(m.ifds[i].ImageLength)}
+}
+
 func (m Reader) GetEPSGCode(i int) (int, error) {
 	geoKeyList, err := m.parseGeoKeys(i)
 	if err != nil {

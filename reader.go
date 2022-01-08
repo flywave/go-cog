@@ -37,9 +37,6 @@ func Read(fileName string) *Reader {
 
 	ifds := make([]*IFD, 0)
 	for i := range tifds {
-		if err := sanityCheckIFD(tifds[i]); err != nil {
-			return nil
-		}
 		ifd, err := loadIFD(tif.R(), tifds[i])
 		if err != nil {
 			panic(err)
@@ -201,8 +198,8 @@ func (m Reader) readData(index int) (data interface{}, rect image.Rectangle, err
 			blockCounts = m.ifds[index].TileByteCounts
 		}
 	} else {
-		if len(m.ifds[index].TileByteCounts) > 0 {
-			blockHeight = int(m.ifds[index].TileByteCounts[0])
+		if m.ifds[index].RowsPerStrip != nil {
+			blockHeight = int(*m.ifds[index].RowsPerStrip)
 		}
 
 		blocksDown = (height + blockHeight - 1) / blockHeight

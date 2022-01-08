@@ -53,3 +53,11 @@ func TestTiffWrite(t *testing.T) {
 		t.FailNow()
 	}
 }
+
+func TestTiffRead(t *testing.T) {
+	gtiff := Read("./test_data/test.tif")
+
+	if gtiff == nil {
+		t.FailNow()
+	}
+}

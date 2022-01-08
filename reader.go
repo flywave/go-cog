@@ -11,14 +11,16 @@ import (
 	"math"
 	"os"
 
+	vec2d "github.com/flywave/go3d/float64/vec2"
 	"github.com/google/tiff"
 	"github.com/hhrutter/lzw"
 	"golang.org/x/image/ccitt"
 )
 
 type Reader struct {
-	Data []interface{} // []uint16 |  []uint32 | []uint64 | []int16 |  []int32 | []int64 | []float32 | []float64 | image.Image
-	ifds []*IFD
+	Data  []interface{} // []uint16 |  []uint32 | []uint64 | []int16 |  []int32 | []int64 | []float32 | []float64 | image.Image
+	Rects []image.Rectangle
+	ifds  []*IFD
 }
 
 func Read(fileName string) *Reader {
@@ -28,6 +30,33 @@ func Read(fileName string) *Reader {
 	}
 	defer f.Close()
 	tif, err := tiff.Parse(f, nil, nil)
+	if err != nil {
+		panic(err)
+	}
+	tifds := tif.IFDs()
+
+	ifds := make([]*IFD, 0)
+	for i := range tifds {
+		if err := sanityCheckIFD(tifds[i]); err != nil {
+			return nil
+		}
+		ifd, err := loadIFD(tif.R(), tifds[i])
+		if err != nil {
+			panic(err)
+		}
+		ifds = append(ifds, ifd)
+	}
+	m := &Reader{ifds: ifds}
+	for i := range ifds {
+		d, r, _ := m.readData(i)
+		m.Data = append(m.Data, d)
+		m.Rects = append(m.Rects, r)
+	}
+	return m
+}
+
+func ReadFrom(r tiff.ReadAtReadSeeker) *Reader {
+	tif, err := tiff.Parse(r, nil, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -57,6 +86,70 @@ func ccittFillOrder(tiffFillOrder uint) ccitt.Order {
 		return ccitt.LSB
 	}
 	return ccitt.MSB
+}
+
+func (m Reader) GetEPSGCode(i int) (int, error) {
+	geoKeyList, err := m.parseGeoKeys(i)
+	if err != nil {
+		return 0, err
+	}
+	var EPSGCode int
+	if ifd, ok := geoKeyList[TagProjectedCSTypeGeoKey]; ok {
+		EPSGCode = int(ifd.(uint16))
+	} else if ifd, ok := geoKeyList[TagGeographicTypeGeoKey]; ok {
+		EPSGCode = int(ifd.(uint16))
+	}
+
+	return EPSGCode, nil
+}
+
+func (m *Reader) parseGeoKeys(i int) (map[uint16]interface{}, error) {
+	ret := make(map[uint16]interface{})
+	d := m.ifds[i].GeoKeyDirectoryTag
+	for i := 4; i < len(d); i += 4 {
+		tagNum := uint16(d[i])
+		tagLoc := d[i+1]
+		newGeoKeyCount := uint32(d[i+2])
+		valOffset := d[i+3]
+		if tagLoc == 0 {
+			ret[tagNum] = uint16(valOffset)
+		} else {
+			if tagLoc == TagGeoDoubleParamsTag {
+				gkDoubleParams := m.ifds[i].GeoDoubleParamsTag
+				ret[tagNum] = gkDoubleParams[valOffset*8]
+			} else if tagLoc == TagGeoAsciiParamsTag {
+				gkAsciiParams := m.ifds[i].GeoAsciiParamsTag
+				raw := gkAsciiParams[valOffset : valOffset+uint16(newGeoKeyCount)]
+				ret[tagNum] = raw
+			}
+		}
+	}
+	return ret, nil
+}
+
+func (m Reader) GetBounds(i int) vec2d.Rect {
+	tran, err := m.ifds[i].Geotransform()
+	if err != nil {
+		return vec2d.Rect{}
+	}
+
+	var miny, maxy, minx, maxx float64
+	if tran[5] < 0 {
+		maxy = tran[3]
+		miny = tran[3] + tran[5]*float64(m.ifds[i].ImageLength)
+	} else {
+		miny = tran[3]
+		maxy = tran[3] + tran[5]*float64(m.ifds[i].ImageLength)
+	}
+	if tran[1] < 0 {
+		maxx = tran[0]
+		minx = tran[0] + tran[1]*float64(m.ifds[i].ImageWidth)
+	} else {
+		minx = tran[0]
+		maxx = tran[0] + tran[1]*float64(m.ifds[i].ImageWidth)
+	}
+
+	return vec2d.Rect{Min: vec2d.T{minx, miny}, Max: vec2d.T{maxx, maxy}}
 }
 
 func (m Reader) readData(index int) (data interface{}, rect image.Rectangle, err error) {

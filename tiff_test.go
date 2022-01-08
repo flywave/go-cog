@@ -45,7 +45,11 @@ func TestTiffWrite(t *testing.T) {
 
 	gtiff = Read("./test_data/tiled.tif")
 
-	if gtiff == nil {
+	geikeys, _ := gtiff.GetEPSGCode(0)
+
+	bounds := gtiff.GetBounds(0)
+
+	if gtiff == nil || geikeys == 0 || bounds.Max[0] == 0 {
 		t.FailNow()
 	}
 }

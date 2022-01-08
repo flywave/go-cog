@@ -149,28 +149,20 @@ func (l *TileLayer) setupIFD() {
 	if l.ifd.TileLength != uint16(l.grid.TileSize[1]) {
 		l.ifd.TileLength = uint16(l.grid.TileSize[1])
 	}
-	tran := l.GetTransform()
 
-	var north, south, east, west float64
-	if tran[5] < 0 {
-		north = tran[3]
-		south = tran[3] + tran[5]*float64(l.size[1])
-	} else {
-		south = tran[3]
-		north = tran[3] + tran[5]*float64(l.size[1])
-	}
-	if tran[1] < 0 {
-		east = tran[0]
-		west = tran[0] + tran[1]*float64(l.size[0])
-	} else {
-		west = tran[0]
-		east = tran[0] + tran[1]*float64(l.size[0])
+	if l.ifd.TileWidth != uint16(l.size[0]) {
+		l.ifd.TileWidth = uint16(l.size[0])
 	}
 
-	cellSizeX := (east - west) / float64(l.size[0])
-	cellSizeY := (north - south) / float64(l.size[1])
+	if l.ifd.TileLength != uint16(l.size[1]) {
+		l.ifd.TileLength = uint16(l.size[1])
+	}
+	box := l.grid.Srs.TransformRectTo(epsg4326, l.box, 16)
 
-	l.ifd.ModelTiePointTag = []float64{0, 0, 0, west, north, 0}
+	cellSizeX := (box.Max[0] - box.Min[0]) / float64(l.size[0])
+	cellSizeY := (box.Max[1] - box.Min[1]) / float64(l.size[1])
+
+	l.ifd.ModelTiePointTag = []float64{0, 0, 0, box.Min[0], box.Min[1], 0}
 	l.ifd.ModelPixelScaleTag = []float64{cellSizeX, cellSizeY, 0}
 
 	if l.noData != nil {

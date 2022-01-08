@@ -235,6 +235,8 @@ func (s *RawSource) Encode(w io.Writer, ifd *IFD) (uint32, *IFD, error) {
 		ifd.PhotometricInterpretation = uint16(s.photometricInterpretation)
 		ifd.SamplesPerPixel = uint16(s.samplesPerPixel)
 
+		ifd.SampleFormat = s.sampleFormat
+
 		if len(s.colorMap) != 0 {
 			ifd.Colormap = s.colorMap
 		}

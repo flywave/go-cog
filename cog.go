@@ -64,7 +64,7 @@ func (g *CogWriter) writeData(out io.Writer) error {
 		off = 8 + glen
 	}
 	for i, t := range g.tiles {
-		next := i < len(g.tiles)
+		next := i < (len(g.tiles) - 1)
 		err := g.writeIFD(out, t.ifd, off, strileData, next)
 		if err != nil {
 			return fmt.Errorf("write ifd: %w", err)
@@ -92,12 +92,10 @@ func (g *CogWriter) writeData(out io.Writer) error {
 			if uint32(len(data)) < bc+8 {
 				data = make([]byte, (bc+8)*2)
 			}
-			g.enc.PutUint32(data, bc)
-			_, err = tile.layer.GetReader().Read(data[4 : 4+bc])
+			_, err = tile.layer.GetReader().Read(data[0 : 8+bc])
 			if err != nil {
 				return err
 			}
-			copy(data[4+bc:8+bc], data[bc:4+bc])
 			_, err = out.Write(data[0 : bc+8])
 			if err != nil {
 				return fmt.Errorf("write %d: %w", bc, err)

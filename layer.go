@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	"io/ioutil"
-	"math"
 	"os"
 	"sort"
 
@@ -25,10 +24,10 @@ type tiledSortedByXY []*Tile
 func (a tiledSortedByXY) Len() int      { return len(a) }
 func (a tiledSortedByXY) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 func (a tiledSortedByXY) Less(i, j int) bool {
-	if a[i].Id[0] == a[j].Id[0] {
-		return a[i].Id[1] < a[j].Id[1]
+	if a[i].Id[1] == a[j].Id[1] {
+		return a[i].Id[0] < a[j].Id[0]
 	}
-	return a[i].Id[0] < a[j].Id[0]
+	return a[i].Id[1] < a[j].Id[1]
 }
 
 type tiledSortedByXYup []*Tile
@@ -36,26 +35,27 @@ type tiledSortedByXYup []*Tile
 func (a tiledSortedByXYup) Len() int      { return len(a) }
 func (a tiledSortedByXYup) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 func (a tiledSortedByXYup) Less(i, j int) bool {
-	if a[i].Id[0] == a[j].Id[0] {
-		return a[i].Id[1] > a[j].Id[1]
+	if a[i].Id[1] == a[j].Id[1] {
+		return a[i].Id[0] > a[j].Id[0]
 	}
-	return a[i].Id[0] < a[j].Id[0]
+	return a[i].Id[1] < a[j].Id[1]
 }
 
 type TileLayer struct {
 	row      int
 	col      int
 	level    int
+	size     [2]int
 	tiles    []*Tile
 	tilemap  map[[3]int]*Tile
 	box      vec2d.Rect
-	grid     geo.TileGrid
+	grid     *geo.TileGrid
 	ifd      *IFD
 	tempFile *os.File
 	noData   *string
 }
 
-func NewTileLayer(box vec2d.Rect, level int, grid geo.TileGrid) *TileLayer {
+func NewTileLayer(box vec2d.Rect, level int, grid *geo.TileGrid) *TileLayer {
 	rect, si, iter, err := grid.GetAffectedLevelTiles(box, level)
 
 	if err != nil {
@@ -92,7 +92,9 @@ func NewTileLayer(box vec2d.Rect, level int, grid geo.TileGrid) *TileLayer {
 		return nil
 	}
 
-	return &TileLayer{row: si[1], col: si[0], level: level, box: rect, grid: grid, tilemap: tilemap, tiles: tiles, tempFile: p}
+	imagesi := [2]int{int(grid.TileSize[0]) * si[0], int(grid.TileSize[1]) * si[1]}
+
+	return &TileLayer{row: si[1], col: si[0], level: level, size: imagesi, box: rect, grid: grid, tilemap: tilemap, tiles: tiles, tempFile: p}
 }
 
 func (l *TileLayer) GetTile(t [3]int) *Tile {
@@ -124,25 +126,21 @@ func (l *TileLayer) GetTileSize() [2]uint32 {
 	return [2]uint32{l.grid.TileSize[0], l.grid.TileSize[1]}
 }
 
-func (l *TileLayer) GetImageSize() [2]uint64 {
-	width := l.box.Max[0] - l.box.Min[0]
-	height := l.box.Max[1] - l.box.Min[1]
-
-	res := l.grid.Resolution(l.level)
-
-	return [2]uint64{uint64(math.Ceil(width / res)), uint64(math.Ceil(height / res))}
-}
-
 func (l *TileLayer) GetTransform() GeoTransform {
-	res := l.grid.Resolution(l.level)
 	box := l.grid.Srs.TransformRectTo(epsg4326, l.box, 16)
-	return GeoTransform{box.Min[0], res, 0, box.Max[1], 0, -res}
+
+	res := caclulatePixelSize(l.size[0], l.size[1], box)
+
+	if l.grid.FlippedYAxis {
+		return GeoTransform{box.Min[0], res[0], 0, box.Max[1], 0, -res[1]}
+	}
+	return GeoTransform{box.Min[0], res[0], 0, box.Max[1], 0, res[1]}
 }
 
 func (l *TileLayer) setupIFD() {
 	l.ifd.SetEPSG(uint(4326), true)
-	si := l.GetImageSize()
-	l.ifd.ImageWidth, l.ifd.ImageLength = uint64(si[0]), uint64(si[1])
+
+	l.ifd.ImageWidth, l.ifd.ImageLength = uint64(l.size[0]), uint64(l.size[1])
 
 	if l.ifd.TileWidth != uint16(l.grid.TileSize[0]) {
 		l.ifd.TileWidth = uint16(l.grid.TileSize[0])
@@ -152,7 +150,28 @@ func (l *TileLayer) setupIFD() {
 		l.ifd.TileLength = uint16(l.grid.TileSize[1])
 	}
 	tran := l.GetTransform()
-	l.ifd.ModelTiePointTag = tran[:]
+
+	var north, south, east, west float64
+	if tran[5] < 0 {
+		north = tran[3]
+		south = tran[3] + tran[5]*float64(l.size[1])
+	} else {
+		south = tran[3]
+		north = tran[3] + tran[5]*float64(l.size[1])
+	}
+	if tran[1] < 0 {
+		east = tran[0]
+		west = tran[0] + tran[1]*float64(l.size[0])
+	} else {
+		west = tran[0]
+		east = tran[0] + tran[1]*float64(l.size[0])
+	}
+
+	cellSizeX := (east - west) / float64(l.size[0])
+	cellSizeY := (north - south) / float64(l.size[1])
+
+	l.ifd.ModelTiePointTag = []float64{0, 0, 0, west, north, 0}
+	l.ifd.ModelPixelScaleTag = []float64{cellSizeX, cellSizeY, 0}
 
 	if l.noData != nil {
 		l.ifd.NoData = *l.noData
@@ -214,7 +233,7 @@ func (a layerSorted) Less(i, j int) bool {
 	return a[i].level > a[j].level
 }
 
-func BuildTileLayers(box vec2d.Rect, levels []int, grid geo.TileGrid) []*TileLayer {
+func BuildTileLayers(box vec2d.Rect, levels []int, grid *geo.TileGrid) []*TileLayer {
 	layers := make([]*TileLayer, len(levels))
 	for i, level := range levels {
 		layers[i] = NewTileLayer(box, level, grid)

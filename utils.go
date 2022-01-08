@@ -6,6 +6,7 @@ import (
 	"image"
 	"io"
 
+	vec2d "github.com/flywave/go3d/float64/vec2"
 	"github.com/google/tiff"
 )
 
@@ -424,4 +425,11 @@ func sanityCheckIFD(ifd tiff.IFD) error {
 		return fmt.Errorf("tif has strips")
 	}
 	return nil
+}
+
+func caclulatePixelSize(width, height int, bbox vec2d.Rect) []float64 {
+	pixelSize := []float64{0, 0}
+	pixelSize[0] = (bbox.Max[0] - bbox.Min[0]) / float64(width)
+	pixelSize[1] = (bbox.Max[1] - bbox.Min[1]) / float64(height)
+	return pixelSize
 }

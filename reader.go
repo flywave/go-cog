@@ -12,6 +12,7 @@ import (
 	"os"
 
 	vec2d "github.com/flywave/go3d/float64/vec2"
+
 	"github.com/google/tiff"
 	"github.com/hhrutter/lzw"
 	"golang.org/x/image/ccitt"

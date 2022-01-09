@@ -14,17 +14,16 @@ import (
 
 type TileWriter struct {
 	Writer
-	src          TileSource
-	boxsrs       geo.Proj
-	size         [2]uint32
-	box          vec2d.Rect
-	ifd          *IFD
-	noData       *string
-	flippedYAxis bool
+	src    TileSource
+	boxsrs geo.Proj
+	size   [2]uint32
+	box    vec2d.Rect
+	ifd    *IFD
+	noData *string
 }
 
-func WriteTile(fileName string, src TileSource, box vec2d.Rect, boxsrs geo.Proj, size [2]uint32, flippedYAxis bool, noData *string) error {
-	w := NewTileWriter(src, tiffByteOrder, false, box, boxsrs, size, flippedYAxis, noData)
+func WriteTile(fileName string, src TileSource, box vec2d.Rect, boxsrs geo.Proj, size [2]uint32, noData *string) error {
+	w := NewTileWriter(src, tiffByteOrder, false, box, boxsrs, size, noData)
 
 	f, err := os.Create(fileName)
 
@@ -43,8 +42,8 @@ func WriteTile(fileName string, src TileSource, box vec2d.Rect, boxsrs geo.Proj,
 	return nil
 }
 
-func NewTileWriter(src TileSource, enc binary.ByteOrder, bigtiff bool, box vec2d.Rect, boxsrs geo.Proj, size [2]uint32, flippedYAxis bool, noData *string) *TileWriter {
-	w := &TileWriter{src: src, boxsrs: boxsrs, size: size, box: box, ifd: &IFD{}, noData: noData, Writer: Writer{enc: enc, bigtiff: bigtiff}, flippedYAxis: flippedYAxis}
+func NewTileWriter(src TileSource, enc binary.ByteOrder, bigtiff bool, box vec2d.Rect, boxsrs geo.Proj, size [2]uint32, noData *string) *TileWriter {
+	w := &TileWriter{src: src, boxsrs: boxsrs, size: size, box: box, ifd: &IFD{}, noData: noData, Writer: Writer{enc: enc, bigtiff: bigtiff}}
 	return w
 }
 

@@ -170,6 +170,15 @@ func (l *TileLayer) setupIFD() {
 	}
 }
 
+func (l *TileLayer) Valid() bool {
+	for i := range l.tiles {
+		if l.tiles[i].Src == nil {
+			return false
+		}
+	}
+	return true
+}
+
 func (l *TileLayer) Close() error {
 	l.tempFile.Close()
 	os.Remove(l.tempFile.Name())

@@ -90,11 +90,11 @@ func (m Reader) GetSize(i int) [2]uint32 {
 	return [2]uint32{uint32(m.ifds[i].ImageWidth), uint32(m.ifds[i].ImageLength)}
 }
 
-func (m Reader) GetPixelSize(i int) [2]uint32 {
+func (m Reader) GetPixelSize(i int) [2]float64 {
 	if len(m.ifds[i].ModelPixelScaleTag) != 0 {
-		return [2]uint32{uint32(m.ifds[i].ModelPixelScaleTag[0]), uint32(m.ifds[i].ModelPixelScaleTag[1])}
+		return [2]float64{float64(m.ifds[i].ModelPixelScaleTag[0]), float64(m.ifds[i].ModelPixelScaleTag[1])}
 	}
-	return [2]uint32{uint32(0), uint32(0)}
+	return [2]float64{float64(0), float64(0)}
 }
 
 func (m Reader) GetEPSGCode(i int) (int, error) {

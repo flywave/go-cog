@@ -162,7 +162,7 @@ func (l *TileLayer) setupIFD() {
 	cellSizeX := (box.Max[0] - box.Min[0]) / float64(l.size[0])
 	cellSizeY := (box.Max[1] - box.Min[1]) / float64(l.size[1])
 
-	l.ifd.ModelTiePointTag = []float64{0, 0, 0, box.Min[0], box.Min[1], 0}
+	l.ifd.ModelTiePointTag = []float64{0, 0, 0, box.Min[0], box.Max[1], 0}
 	l.ifd.ModelPixelScaleTag = []float64{cellSizeX, cellSizeY, 0}
 
 	if l.noData != nil {

@@ -90,6 +90,13 @@ func (m Reader) GetSize(i int) [2]uint32 {
 	return [2]uint32{uint32(m.ifds[i].ImageWidth), uint32(m.ifds[i].ImageLength)}
 }
 
+func (m Reader) GetPixelSize(i int) [2]uint32 {
+	if len(m.ifds[i].ModelPixelScaleTag) != 0 {
+		return [2]uint32{uint32(m.ifds[i].ModelPixelScaleTag[0]), uint32(m.ifds[i].ModelPixelScaleTag[1])}
+	}
+	return [2]uint32{uint32(0), uint32(0)}
+}
+
 func (m Reader) GetEPSGCode(i int) (int, error) {
 	geoKeyList, err := m.parseGeoKeys(i)
 	if err != nil {

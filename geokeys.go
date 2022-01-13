@@ -510,6 +510,7 @@ var EllipsoidMap = map[uint]string{
 }
 
 var ProjectedCSMap = map[uint]string{
+	3857:  "WGS 84 / Pseudo-Mercator",
 	20137: "PCS_Adindan_UTM_zone_37N",
 	20138: "PCS_Adindan_UTM_zone_38N",
 	20248: "PCS_AGD66_AMG_zone_48",

@@ -94,7 +94,17 @@ func NewTileLayer(box vec2d.Rect, level int, grid *geo.TileGrid) *TileLayer {
 
 	imagesi := [2]int{int(grid.TileSize[0]) * si[0], int(grid.TileSize[1]) * si[1]}
 
-	return &TileLayer{row: si[1], col: si[0], level: level, size: imagesi, box: rect, grid: grid, tilemap: tilemap, tiles: tiles, tempFile: p}
+	return &TileLayer{
+		row:      si[1],
+		col:      si[0],
+		level:    level,
+		size:     imagesi,
+		box:      rect,
+		grid:     grid,
+		tilemap:  tilemap,
+		tiles:    tiles,
+		tempFile: p,
+	}
 }
 
 func (l *TileLayer) GetTile(t [3]int) *Tile {
@@ -157,6 +167,7 @@ func (l *TileLayer) setupIFD() {
 	if l.ifd.TileLength != uint16(l.size[1]) {
 		l.ifd.TileLength = uint16(l.size[1])
 	}
+
 	box := l.grid.Srs.TransformRectTo(epsg4326, l.box, 16)
 
 	cellSizeX := (box.Max[0] - box.Min[0]) / float64(l.size[0])
@@ -195,19 +206,12 @@ func (l *TileLayer) encode(enc binary.ByteOrder, clearOnSave bool) error {
 				OriginalTileOffsets: make([]uint64, len(l.tiles)),
 				TileByteCounts:      make([]uint32, len(l.tiles)),
 			}
-			n, _, err := l.tiles[i].Src.Encode(l.tempFile, l.ifd)
-			if err != nil {
-				return err
-			}
-			imageLen = n
-		} else {
-			n, _, err := l.tiles[i].Src.Encode(l.tempFile, nil)
-			if err != nil {
-				return err
-			}
-			imageLen = n
 		}
-
+		n, _, err := l.tiles[i].Src.Encode(l.tempFile, l.ifd)
+		if err != nil {
+			return err
+		}
+		imageLen = n
 		l.ifd.TileByteCounts[i] = imageLen
 		l.ifd.OriginalTileOffsets[i] = offset
 		offset += uint64(imageLen + 8)

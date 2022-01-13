@@ -3,6 +3,7 @@ package cog
 import (
 	"encoding/binary"
 	"errors"
+	"image"
 	"io"
 	"io/ioutil"
 	"os"
@@ -190,6 +191,25 @@ func (l *TileLayer) Valid() bool {
 	return true
 }
 
+func (l *TileLayer) processEmpty() {
+	var zero interface{}
+	var rect image.Rectangle
+	var ctype CompressionType
+	for i := range l.tiles {
+		if zero == nil && l.tiles[i].Src != nil {
+			zero = getZeroDate(l.tiles[i].Src)
+			rect = l.tiles[i].Src.Bounds()
+			ctype = l.tiles[i].Src.CompressionType()
+			break
+		}
+	}
+	for i := range l.tiles {
+		if l.tiles[i].Src == nil {
+			l.tiles[i].Src = NewSource(zero, &rect, ctype)
+		}
+	}
+}
+
 func (l *TileLayer) Close() error {
 	l.tempFile.Close()
 	os.Remove(l.tempFile.Name())
@@ -197,6 +217,10 @@ func (l *TileLayer) Close() error {
 }
 
 func (l *TileLayer) encode(enc binary.ByteOrder, clearOnSave bool) error {
+	if !l.Valid() {
+		l.processEmpty()
+	}
+
 	offset := uint64(0)
 
 	for i := range l.tiles {

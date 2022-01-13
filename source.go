@@ -5,6 +5,7 @@ import (
 	"compress/zlib"
 	"encoding/binary"
 	"image"
+	"image/color"
 	"io"
 
 	"github.com/hhrutter/lzw"
@@ -14,6 +15,8 @@ type TileSource interface {
 	Bounds() image.Rectangle
 	Encode(w io.Writer, ifd *IFD) (uint32, *IFD, error)
 	Reset()
+	Data() interface{}
+	CompressionType() CompressionType
 }
 
 type RawSource struct {
@@ -35,6 +38,14 @@ func NewSource(data interface{}, rect *image.Rectangle, ctype CompressionType) *
 
 func (s *RawSource) Reset() {
 	s.dataOrImage = nil
+}
+
+func (s *RawSource) Data() interface{} {
+	return s.dataOrImage
+}
+
+func (s *RawSource) CompressionType() CompressionType {
+	return s.ctype
 }
 
 func (s *RawSource) Bounds() image.Rectangle {
@@ -264,4 +275,42 @@ func NewTiffSource(ifd *IFD, enc binary.ByteOrder) *TiffSource {
 
 func (s *TiffSource) Bounds() image.Rectangle {
 	return image.Rect(0, 0, int(s.ifd.TileWidth), int(s.ifd.TileLength))
+}
+
+func getZeroDate(src TileSource) interface{} {
+	w, h := src.Bounds().Dx(), src.Bounds().Dy()
+	switch src.Data().(type) {
+	case *image.Paletted:
+		return image.NewPaletted(src.Bounds(), color.Palette{})
+	case *image.Gray:
+		return image.NewGray(src.Bounds())
+	case *image.Gray16:
+		return image.NewGray16(src.Bounds())
+	case *image.NRGBA:
+		return image.NewNRGBA(src.Bounds())
+	case *image.NRGBA64:
+		return image.NewNRGBA64(src.Bounds())
+	case *image.RGBA:
+		return image.NewRGBA(src.Bounds())
+	case *image.RGBA64:
+		return image.NewRGBA64(src.Bounds())
+	case []uint16:
+		return make([]uint16, w*h)
+	case []uint32:
+		return make([]uint16, w*h)
+	case []uint64:
+		return make([]uint16, w*h)
+	case []int16:
+		return make([]uint16, w*h)
+	case []int32:
+		return make([]uint16, w*h)
+	case []int64:
+		return make([]uint16, w*h)
+	case []float32:
+		return make([]uint16, w*h)
+	case []float64:
+		return make([]uint16, w*h)
+	default:
+		return nil
+	}
 }

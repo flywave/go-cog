@@ -60,6 +60,10 @@ func (s *RawSource) Bounds() image.Rectangle {
 		return m.Bounds()
 	case *image.NRGBA64:
 		return m.Bounds()
+	case *image.RGBA:
+		return m.Bounds()
+	case *image.NRGBA:
+		return m.Bounds()
 	}
 	if s.rect != nil {
 		return *s.rect
@@ -90,6 +94,10 @@ func (s *RawSource) Encode(w io.Writer, ifd *IFD) (uint32, *IFD, error) {
 			imageLen = d.X * d.Y * 8
 		case *image.NRGBA64:
 			imageLen = d.X * d.Y * 8
+		case *image.RGBA:
+			imageLen = d.X * d.Y * 4
+		case *image.NRGBA:
+			imageLen = d.X * d.Y * 4
 		case []uint16:
 			imageLen = d.X * d.Y * 2
 		case []uint32:
@@ -152,20 +160,20 @@ func (s *RawSource) Encode(w io.Writer, ifd *IFD) (uint32, *IFD, error) {
 		s.bitsPerSample = []uint16{16}
 		s.sampleFormat = []uint16{1}
 		err = encodeGray16(dst, m.Pix, d.X, d.Y, m.Stride)
-	case *image.NRGBA:
-		s.extraSamples = 2
-		err = encodeRGBA(dst, m.Pix, d.X, d.Y, m.Stride)
 	case *image.NRGBA64:
 		s.extraSamples = 2
 		s.bitsPerSample = []uint16{16, 16, 16, 16}
 		err = encodeRGBA64(dst, m.Pix, d.X, d.Y, m.Stride)
-	case *image.RGBA:
-		s.extraSamples = 1
-		err = encodeRGBA(dst, m.Pix, d.X, d.Y, m.Stride)
 	case *image.RGBA64:
 		s.extraSamples = 1
 		s.bitsPerSample = []uint16{16, 16, 16, 16}
 		err = encodeRGBA64(dst, m.Pix, d.X, d.Y, m.Stride)
+	case *image.NRGBA:
+		s.extraSamples = 2
+		err = encodeRGBA(dst, m.Pix, d.X, d.Y, m.Stride)
+	case *image.RGBA:
+		s.extraSamples = 1
+		err = encodeRGBA(dst, m.Pix, d.X, d.Y, m.Stride)
 	case []uint16:
 		s.photometricInterpretation = PI_BlackIsZero
 		s.samplesPerPixel = 1

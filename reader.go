@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"math"
 	"os"
+	"strconv"
 
 	vec2d "github.com/flywave/go3d/float64/vec2"
 
@@ -97,6 +98,17 @@ func (m Reader) GetPixelSize(i int) [2]float64 {
 	return [2]float64{float64(0), float64(0)}
 }
 
+func (m Reader) GetNoData(i int) *float64 {
+	if s := m.ifds[i].NoData; s != "" {
+		f, err := strconv.ParseFloat(s, 64)
+		if err != nil {
+			return nil
+		}
+		return &f
+	}
+	return nil
+}
+
 func (m Reader) GetEPSGCode(i int) (int, error) {
 	geoKeyList, err := m.parseGeoKeys(i)
 	if err != nil {
@@ -134,6 +146,14 @@ func (m *Reader) parseGeoKeys(i int) (map[uint16]interface{}, error) {
 		}
 	}
 	return ret, nil
+}
+
+func (m Reader) GetGeoTransform(i int) GeoTransform {
+	tran, err := m.ifds[i].Geotransform()
+	if err != nil {
+		return GeoTransform{}
+	}
+	return tran
 }
 
 func (m Reader) GetBounds(i int) vec2d.Rect {

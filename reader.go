@@ -124,9 +124,9 @@ func (m Reader) GetEPSGCode(i int) (int, error) {
 	return EPSGCode, nil
 }
 
-func (m *Reader) parseGeoKeys(i int) (map[uint16]interface{}, error) {
+func (m *Reader) parseGeoKeys(idx int) (map[uint16]interface{}, error) {
 	ret := make(map[uint16]interface{})
-	d := m.ifds[i].GeoKeyDirectoryTag
+	d := m.ifds[idx].GeoKeyDirectoryTag
 	for i := 4; i < len(d); i += 4 {
 		tagNum := uint16(d[i])
 		tagLoc := d[i+1]
@@ -139,7 +139,7 @@ func (m *Reader) parseGeoKeys(i int) (map[uint16]interface{}, error) {
 				gkDoubleParams := m.ifds[i].GeoDoubleParamsTag
 				ret[tagNum] = gkDoubleParams[valOffset*8]
 			} else if tagLoc == TagGeoAsciiParamsTag {
-				gkAsciiParams := m.ifds[i].GeoAsciiParamsTag
+				gkAsciiParams := m.ifds[idx].GeoAsciiParamsTag
 				raw := gkAsciiParams[valOffset : valOffset+uint16(newGeoKeyCount)]
 				ret[tagNum] = raw
 			}

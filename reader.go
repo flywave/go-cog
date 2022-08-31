@@ -136,7 +136,7 @@ func (m *Reader) parseGeoKeys(idx int) (map[uint16]interface{}, error) {
 			ret[tagNum] = uint16(valOffset)
 		} else {
 			if tagLoc == TagGeoDoubleParamsTag {
-				gkDoubleParams := m.ifds[i].GeoDoubleParamsTag
+				gkDoubleParams := m.ifds[idx].GeoDoubleParamsTag
 				ret[tagNum] = gkDoubleParams[valOffset*8]
 			} else if tagLoc == TagGeoAsciiParamsTag {
 				gkAsciiParams := m.ifds[idx].GeoAsciiParamsTag

@@ -7,7 +7,7 @@ import (
 )
 
 func TestTiffWrite(t *testing.T) {
-	gtiff := Read("./test_data/scan_512x512_rgb8_tiled.tif")
+	gtiff := Read("/home/hj/workspace/flywave-gdal/testdata/linye2.tif")
 
 	if gtiff == nil {
 		t.FailNow()
